@@ -7,7 +7,9 @@ import type {
   ImportItem,
   ApiCallInfo,
   ReactComponentInfo,
-  HookInfo
+  HookInfo,
+  DeclarationItem,
+  DeclarationType
 } from '../renderer/src/types/ast.types'
 
 // Cloud SDK imports to detect
@@ -44,6 +46,7 @@ export async function parseFile(filePath: string): Promise<FileAnalysisResult> {
     components: [],
     hooks: [],
     apiCalls: [],
+    allDeclarations: [],
     errors: []
   }
 
@@ -75,7 +78,7 @@ export async function parseFile(filePath: string): Promise<FileAnalysisResult> {
 /**
  * Traverse AST and collect information
  */
-function traverseAST(node: TSESTree.Node, result: FileAnalysisResult): void {
+function traverseAST(node: TSESTree.Node, result: FileAnalysisResult, isExported = false): void {
   switch (node.type) {
     case 'ImportDeclaration':
       handleImport(node, result)
@@ -91,6 +94,30 @@ function traverseAST(node: TSESTree.Node, result: FileAnalysisResult): void {
 
     case 'CallExpression':
       handleCallExpression(node, result)
+      break
+
+    case 'FunctionDeclaration':
+      handleFunctionDeclaration(node, result, isExported)
+      break
+
+    case 'ClassDeclaration':
+      handleClassDeclaration(node, result, isExported)
+      break
+
+    case 'VariableDeclaration':
+      handleVariableDeclaration(node, result, isExported)
+      break
+
+    case 'TSTypeAliasDeclaration':
+      handleTypeAlias(node, result, isExported)
+      break
+
+    case 'TSInterfaceDeclaration':
+      handleInterface(node, result, isExported)
+      break
+
+    case 'TSEnumDeclaration':
+      handleEnum(node, result, isExported)
       break
   }
 
@@ -145,37 +172,102 @@ function handleExportNamed(node: TSESTree.ExportNamedDeclaration, result: FileAn
   const declaration = node.declaration
 
   if (declaration.type === 'FunctionDeclaration' && declaration.id) {
+    const name = declaration.id.name
     result.exports.push({
-      name: declaration.id.name,
+      name,
       type: 'function',
       isReactComponent: false, // Will be determined later
-      isHook: isHookName(declaration.id.name),
+      isHook: isHookName(name),
       line: declaration.loc.start.line
     })
+    // Also add to allDeclarations
+    result.allDeclarations.push({
+      name,
+      type: 'function',
+      isExported: true,
+      isDefault: false,
+      isReactComponent: isComponentName(name),
+      isHook: isHookName(name),
+      line: declaration.loc.start.line,
+      signature: buildFunctionSignature(declaration)
+    })
   } else if (declaration.type === 'ClassDeclaration' && declaration.id) {
+    const name = declaration.id.name
     result.exports.push({
-      name: declaration.id.name,
+      name,
       type: 'class',
       isReactComponent: false,
+      isHook: false,
+      line: declaration.loc.start.line
+    })
+    result.allDeclarations.push({
+      name,
+      type: 'class',
+      isExported: true,
+      isDefault: false,
+      isReactComponent: isComponentName(name),
       isHook: false,
       line: declaration.loc.start.line
     })
   } else if (declaration.type === 'VariableDeclaration') {
     for (const decl of declaration.declarations) {
       if (decl.id.type === 'Identifier') {
+        const name = decl.id.name
         const isArrowFunction =
           decl.init?.type === 'ArrowFunctionExpression' ||
           decl.init?.type === 'FunctionExpression'
 
         result.exports.push({
-          name: decl.id.name,
+          name,
           type: isArrowFunction ? 'function' : 'const',
           isReactComponent: false,
-          isHook: isHookName(decl.id.name),
+          isHook: isHookName(name),
           line: decl.loc.start.line
+        })
+
+        const declType: DeclarationType = isArrowFunction ? 'function' : 'const'
+        result.allDeclarations.push({
+          name,
+          type: declType,
+          isExported: true,
+          isDefault: false,
+          isReactComponent: isArrowFunction && isComponentName(name),
+          isHook: isArrowFunction && isHookName(name),
+          line: decl.loc.start.line,
+          signature: isArrowFunction ? buildArrowSignature(decl.init as TSESTree.ArrowFunctionExpression) : undefined
         })
       }
     }
+  } else if (declaration.type === 'TSTypeAliasDeclaration') {
+    result.allDeclarations.push({
+      name: declaration.id.name,
+      type: 'type',
+      isExported: true,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: declaration.loc.start.line
+    })
+  } else if (declaration.type === 'TSInterfaceDeclaration') {
+    result.allDeclarations.push({
+      name: declaration.id.name,
+      type: 'interface',
+      isExported: true,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: declaration.loc.start.line
+    })
+  } else if (declaration.type === 'TSEnumDeclaration') {
+    result.allDeclarations.push({
+      name: declaration.id.name,
+      type: 'enum',
+      isExported: true,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: declaration.loc.start.line
+    })
   }
 }
 
@@ -186,29 +278,52 @@ function handleExportDefault(node: TSESTree.ExportDefaultDeclaration, result: Fi
   const declaration = node.declaration
 
   if (declaration.type === 'FunctionDeclaration') {
+    const name = declaration.id?.name || 'default'
     result.exports.push({
-      name: declaration.id?.name || 'default',
+      name,
       type: 'default',
       isReactComponent: false,
       isHook: declaration.id ? isHookName(declaration.id.name) : false,
       line: declaration.loc.start.line
     })
+    result.allDeclarations.push({
+      name,
+      type: 'function',
+      isExported: true,
+      isDefault: true,
+      isReactComponent: isComponentName(name),
+      isHook: isHookName(name),
+      line: declaration.loc.start.line,
+      signature: buildFunctionSignature(declaration)
+    })
   } else if (declaration.type === 'ClassDeclaration') {
+    const name = declaration.id?.name || 'default'
     result.exports.push({
-      name: declaration.id?.name || 'default',
+      name,
       type: 'default',
       isReactComponent: false,
       isHook: false,
       line: declaration.loc.start.line
     })
-  } else if (declaration.type === 'Identifier') {
-    result.exports.push({
-      name: declaration.name,
-      type: 'default',
-      isReactComponent: false,
-      isHook: isHookName(declaration.name),
+    result.allDeclarations.push({
+      name,
+      type: 'class',
+      isExported: true,
+      isDefault: true,
+      isReactComponent: isComponentName(name),
+      isHook: false,
       line: declaration.loc.start.line
     })
+  } else if (declaration.type === 'Identifier') {
+    const name = declaration.name
+    result.exports.push({
+      name,
+      type: 'default',
+      isReactComponent: false,
+      isHook: isHookName(name),
+      line: declaration.loc.start.line
+    })
+    // Note: The actual declaration is elsewhere, this is just re-exporting
   }
 }
 
@@ -311,6 +426,197 @@ function identifyReactElements(result: FileAnalysisResult): void {
       })
     }
   }
+}
+
+/**
+ * Handle function declarations (non-exported)
+ */
+function handleFunctionDeclaration(
+  node: TSESTree.FunctionDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  if (!node.id) return
+
+  const name = node.id.name
+  const declaration: DeclarationItem = {
+    name,
+    type: 'function',
+    isExported,
+    isDefault: false,
+    isReactComponent: isComponentName(name),
+    isHook: isHookName(name),
+    line: node.loc.start.line,
+    signature: buildFunctionSignature(node)
+  }
+
+  // Avoid duplicates (exports are handled separately)
+  if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+    result.allDeclarations.push(declaration)
+  }
+}
+
+/**
+ * Handle class declarations (non-exported)
+ */
+function handleClassDeclaration(
+  node: TSESTree.ClassDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  if (!node.id) return
+
+  const name = node.id.name
+  const declaration: DeclarationItem = {
+    name,
+    type: 'class',
+    isExported,
+    isDefault: false,
+    isReactComponent: isComponentName(name),
+    isHook: false,
+    line: node.loc.start.line
+  }
+
+  if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+    result.allDeclarations.push(declaration)
+  }
+}
+
+/**
+ * Handle variable declarations (non-exported)
+ */
+function handleVariableDeclaration(
+  node: TSESTree.VariableDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  for (const decl of node.declarations) {
+    if (decl.id.type !== 'Identifier') continue
+
+    const name = decl.id.name
+    const isArrowFunction =
+      decl.init?.type === 'ArrowFunctionExpression' || decl.init?.type === 'FunctionExpression'
+
+    const declType: DeclarationType = isArrowFunction
+      ? 'function'
+      : node.kind === 'const'
+        ? 'const'
+        : node.kind === 'let'
+          ? 'let'
+          : 'var'
+
+    const declaration: DeclarationItem = {
+      name,
+      type: declType,
+      isExported,
+      isDefault: false,
+      isReactComponent: isArrowFunction && isComponentName(name),
+      isHook: isArrowFunction && isHookName(name),
+      line: decl.loc.start.line,
+      signature: isArrowFunction ? buildArrowSignature(decl.init as TSESTree.ArrowFunctionExpression) : undefined
+    }
+
+    if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+      result.allDeclarations.push(declaration)
+    }
+  }
+}
+
+/**
+ * Handle type alias declarations
+ */
+function handleTypeAlias(
+  node: TSESTree.TSTypeAliasDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  const declaration: DeclarationItem = {
+    name: node.id.name,
+    type: 'type',
+    isExported,
+    isDefault: false,
+    isReactComponent: false,
+    isHook: false,
+    line: node.loc.start.line
+  }
+
+  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+    result.allDeclarations.push(declaration)
+  }
+}
+
+/**
+ * Handle interface declarations
+ */
+function handleInterface(
+  node: TSESTree.TSInterfaceDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  const declaration: DeclarationItem = {
+    name: node.id.name,
+    type: 'interface',
+    isExported,
+    isDefault: false,
+    isReactComponent: false,
+    isHook: false,
+    line: node.loc.start.line
+  }
+
+  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+    result.allDeclarations.push(declaration)
+  }
+}
+
+/**
+ * Handle enum declarations
+ */
+function handleEnum(
+  node: TSESTree.TSEnumDeclaration,
+  result: FileAnalysisResult,
+  isExported: boolean
+): void {
+  const declaration: DeclarationItem = {
+    name: node.id.name,
+    type: 'enum',
+    isExported,
+    isDefault: false,
+    isReactComponent: false,
+    isHook: false,
+    line: node.loc.start.line
+  }
+
+  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+    result.allDeclarations.push(declaration)
+  }
+}
+
+/**
+ * Build function signature string
+ */
+function buildFunctionSignature(node: TSESTree.FunctionDeclaration): string {
+  const params = node.params
+    .map((p) => {
+      if (p.type === 'Identifier') return p.name
+      if (p.type === 'RestElement' && p.argument.type === 'Identifier') return `...${p.argument.name}`
+      return '?'
+    })
+    .join(', ')
+  return `(${params})`
+}
+
+/**
+ * Build arrow function signature string
+ */
+function buildArrowSignature(node: TSESTree.ArrowFunctionExpression): string {
+  const params = node.params
+    .map((p) => {
+      if (p.type === 'Identifier') return p.name
+      if (p.type === 'RestElement' && p.argument.type === 'Identifier') return `...${p.argument.name}`
+      return '?'
+    })
+    .join(', ')
+  return `(${params})`
 }
 
 /**

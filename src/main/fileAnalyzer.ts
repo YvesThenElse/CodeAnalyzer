@@ -2,9 +2,9 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Worker } from 'worker_threads'
 import type { AnalysisProgress, AnalysisError } from '../renderer/src/types/electron.types'
-import type { AnalyzedProject } from '../renderer/src/types/c4.types'
+import type { SerializedAnalyzedGraph } from '../renderer/src/types/graph.types'
 import type { DirectoryStructure, FileAnalysisResult } from '../renderer/src/types/ast.types'
-import { buildC4Model } from './c4Builder'
+import { buildDependencyGraph } from './graphBuilder'
 import { parseFile } from './astParser'
 
 // Directories to ignore during scan
@@ -211,7 +211,7 @@ export async function analyzeProjectDirectory(
   signal: AbortSignal,
   onProgress: (progress: AnalysisProgress) => void,
   onError: (error: AnalysisError) => void
-): Promise<AnalyzedProject> {
+): Promise<SerializedAnalyzedGraph> {
   // Phase 1: Scan directory structure
   const { structure, files } = await scanDirectory(dirPath, signal, onProgress)
 
@@ -222,20 +222,20 @@ export async function analyzeProjectDirectory(
   // Phase 2: Parse files with worker
   const parseResults = await parseFilesWithWorker(files, signal, onProgress, onError)
 
-  // Phase 3: Build C4 model
+  // Phase 3: Build dependency graph
   onProgress({
     phase: 'building',
     current: 0,
     total: 1,
-    currentFile: 'Building C4 model...'
+    currentFile: 'Building dependency graph...'
   })
 
   // Attach parse results to directory structure
   attachParseResults(structure, parseResults)
 
-  // Build and return C4 model
+  // Build and return dependency graph
   const projectName = path.basename(dirPath)
-  const c4Model = buildC4Model(structure, projectName, dirPath)
+  const graph = buildDependencyGraph(structure, projectName, dirPath)
 
   onProgress({
     phase: 'building',
@@ -243,7 +243,7 @@ export async function analyzeProjectDirectory(
     total: 1
   })
 
-  return c4Model
+  return graph
 }
 
 /**

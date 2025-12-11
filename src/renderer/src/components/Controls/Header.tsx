@@ -1,11 +1,9 @@
 import React, { useCallback } from 'react'
-import { useC4Store } from '../../store/c4Store'
-import { useC4Navigation } from '../../hooks/useC4Navigation'
-import { ExportMenu } from './ExportMenu'
+import { useGraphStore } from '../../store/graphStore'
+import { deserializeGraph } from '../../utils/graphUtils'
 
 export function Header(): JSX.Element {
-  const { project, isLoading, setLoading, setProject, setError, setProgress, reset } = useC4Store()
-  const { goBack, canGoBack } = useC4Navigation()
+  const { graph, isLoading, setLoading, setGraph, setError, setProgress, reset } = useGraphStore()
 
   const handleSelectDirectory = useCallback(async () => {
     try {
@@ -32,7 +30,9 @@ export function Header(): JSX.Element {
       try {
         const result = await window.electronAPI.analyzeProject(dirPath)
         if (result) {
-          setProject(result)
+          // Deserialize the graph (convert files array back to Map)
+          const deserializedGraph = deserializeGraph(result)
+          setGraph(deserializedGraph)
         }
       } finally {
         unsubProgress()
@@ -44,10 +44,10 @@ export function Header(): JSX.Element {
       setError((error as Error).message)
       setLoading(false)
     }
-  }, [reset, setLoading, setProgress, setProject, setError])
+  }, [reset, setLoading, setProgress, setGraph, setError])
 
   const handleRefresh = useCallback(async () => {
-    if (!project?.rootPath) return
+    if (!graph?.rootPath) return
 
     setLoading(true)
 
@@ -62,9 +62,10 @@ export function Header(): JSX.Element {
     })
 
     try {
-      const result = await window.electronAPI.analyzeProject(project.rootPath)
+      const result = await window.electronAPI.analyzeProject(graph.rootPath)
       if (result) {
-        setProject(result)
+        const deserializedGraph = deserializeGraph(result)
+        setGraph(deserializedGraph)
       }
     } finally {
       unsubProgress()
@@ -72,7 +73,7 @@ export function Header(): JSX.Element {
       setLoading(false)
       setProgress(null)
     }
-  }, [project?.rootPath, setLoading, setProgress, setProject, setError])
+  }, [graph?.rootPath, setLoading, setProgress, setGraph, setError])
 
   return (
     <div className="header">
@@ -90,24 +91,18 @@ export function Header(): JSX.Element {
         <button
           className="btn btn--secondary"
           onClick={handleRefresh}
-          disabled={isLoading || !project}
+          disabled={isLoading || !graph}
         >
-          Refresh
-        </button>
-
-        <button
-          className="btn btn--secondary"
-          onClick={goBack}
-          disabled={isLoading || !canGoBack}
-          title="Remonter d'un niveau"
-        >
-          ← Back
+          Rafraîchir
         </button>
       </div>
 
-      <div className="header__spacer" />
-
-      <ExportMenu disabled={!project || isLoading} />
+      {graph && (
+        <div className="header__info">
+          <span className="header__project-name">{graph.name}</span>
+          <span className="header__file-count">{graph.files.size} fichiers</span>
+        </div>
+      )}
     </div>
   )
 }

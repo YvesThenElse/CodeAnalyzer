@@ -1,16 +1,16 @@
 import React from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Header } from './components/Controls/Header'
-import { Breadcrumb } from './components/Controls/Breadcrumb'
+import { BackButton } from './components/Controls/BackButton'
+import { ClusteringToggle } from './components/Controls/ClusteringToggle'
 import { DiagramView } from './components/Diagram/DiagramView'
 import { LoadingOverlay } from './components/Controls/LoadingOverlay'
-import { DetectionPanel } from './components/Panels/DetectionPanel'
 import { NodeDetailsPanel } from './components/Panels/NodeDetailsPanel'
 import { FileTreePanel } from './components/Panels/FileTreePanel'
-import { useC4Store } from './store/c4Store'
+import { useGraphStore } from './store/graphStore'
 
 function App(): JSX.Element {
-  const isLoading = useC4Store((state) => state.isLoading)
+  const isLoading = useGraphStore((state) => state.isLoading)
 
   return (
     <ReactFlowProvider>
@@ -18,8 +18,9 @@ function App(): JSX.Element {
         <header className="app__header">
           <Header />
         </header>
-        <nav className="app__breadcrumb">
-          <Breadcrumb />
+        <nav className="app__toolbar">
+          <BackButton />
+          <ClusteringToggle />
         </nav>
         <div className="app__main">
           <FileTreePanel />
@@ -28,7 +29,6 @@ function App(): JSX.Element {
           </main>
           <NodeDetailsPanel />
         </div>
-        <DetectionPanel />
         {isLoading && <LoadingOverlay />}
       </div>
     </ReactFlowProvider>

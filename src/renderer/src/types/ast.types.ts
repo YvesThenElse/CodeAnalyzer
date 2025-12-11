@@ -7,7 +7,31 @@ export interface FileAnalysisResult {
   components: ReactComponentInfo[]
   hooks: HookInfo[]
   apiCalls: ApiCallInfo[]
+  allDeclarations: DeclarationItem[]
   errors?: ParseError[]
+}
+
+// ===== ALL DECLARATIONS (exported and non-exported) =====
+
+export type DeclarationType =
+  | 'function'
+  | 'class'
+  | 'const'
+  | 'let'
+  | 'var'
+  | 'type'
+  | 'interface'
+  | 'enum'
+
+export interface DeclarationItem {
+  name: string
+  type: DeclarationType
+  isExported: boolean
+  isDefault: boolean
+  isReactComponent: boolean
+  isHook: boolean
+  line: number
+  signature?: string
 }
 
 // ===== EXPORTS =====

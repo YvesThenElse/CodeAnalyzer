@@ -1,15 +1,15 @@
 import React, { useCallback } from 'react'
-import { useC4Store } from '../../store/c4Store'
+import { useGraphStore } from '../../store/graphStore'
 
 const phaseLabels = {
   scanning: 'Analyse des fichiers...',
   parsing: 'Parsing du code...',
   analyzing: 'Analyse des dépendances...',
-  building: 'Construction du modèle C4...'
+  building: 'Construction du graphe...'
 }
 
 export function LoadingOverlay(): JSX.Element {
-  const { progress, setLoading } = useC4Store()
+  const { progress, setLoading } = useGraphStore()
 
   const handleCancel = useCallback(async () => {
     await window.electronAPI.cancelAnalysis()

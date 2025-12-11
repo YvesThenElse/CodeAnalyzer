@@ -1,77 +1,128 @@
 import React from 'react'
-import { useC4Store } from '../../store/c4Store'
-import { getNodeColors } from '../Diagram/BaseC4Node'
-import { C4Level } from '../../types/c4.types'
+import { useGraphStore } from '../../store/graphStore'
+import { GraphLevel, type CodeItem, type FileNode } from '../../types/graph.types'
+import { getDarkerColor } from '../../utils/colorUtils'
 import './NodeDetailsPanel.less'
 
-const levelLabels: Record<C4Level, string> = {
-  [C4Level.SYSTEM_CONTEXT]: 'System Context',
-  [C4Level.CONTAINER]: 'Container',
-  [C4Level.COMPONENT]: 'Component',
-  [C4Level.CODE]: 'Code'
+const typeIcons: Record<string, string> = {
+  function: 'ƒ',
+  class: 'C',
+  const: '○',
+  let: '○',
+  var: '○',
+  type: 'T',
+  interface: 'I',
+  enum: 'E',
+  'react-component': '⚛',
+  hook: '↩'
 }
 
 const typeLabels: Record<string, string> = {
-  person: 'Person',
-  system: 'System',
-  external_system: 'External System',
-  cloud_service: 'Cloud Service',
-  container_frontend: 'Frontend',
-  container_backend: 'Backend',
-  container_database: 'Database',
-  component: 'Component',
-  code_function: 'Function',
-  code_component: 'React Component',
-  code_hook: 'Hook'
+  function: 'Fonction',
+  class: 'Classe',
+  const: 'Constante',
+  let: 'Variable (let)',
+  var: 'Variable (var)',
+  type: 'Type',
+  interface: 'Interface',
+  enum: 'Enum',
+  'react-component': 'Composant React',
+  hook: 'Hook'
+}
+
+function getCodeItemDisplayType(item: CodeItem): string {
+  if (item.type === 'function' || item.type === 'const') {
+    if (item.name.startsWith('use') && item.name.length > 3 && item.name[3] === item.name[3].toUpperCase()) {
+      return 'hook'
+    }
+    if (item.name[0] === item.name[0].toUpperCase()) {
+      return 'react-component'
+    }
+  }
+  return item.type
 }
 
 export function NodeDetailsPanel(): JSX.Element | null {
-  const { getSelectedElement, setSelectedNodeId, project } = useC4Store()
-  const element = getSelectedElement()
+  const { graph, currentLevel, selectedFileId, selectedNodeId, setSelectedNodeId } = useGraphStore()
 
-  if (!element) {
+  if (!graph || !selectedNodeId) {
     return null
   }
 
-  const colors = getNodeColors(element.type)
+  // Files level - show file details
+  if (currentLevel === GraphLevel.FILES) {
+    const file = graph.files.get(selectedNodeId)
+    if (!file) return null
 
-  // Find children elements by their IDs
-  const childElements = element.children?.map((childId) => {
-    if (!project) return null
-    for (const level of Object.values(project.levels)) {
-      const found = level.find((el) => el.id === childId)
-      if (found) return found
-    }
-    return null
-  }).filter(Boolean) || []
+    return <FileDetailsPanel file={file} graph={graph} onClose={() => setSelectedNodeId(null)} />
+  }
+
+  // Code level - show code item details
+  if (currentLevel === GraphLevel.CODE && selectedFileId) {
+    const file = graph.files.get(selectedFileId)
+    if (!file) return null
+
+    const codeItem = file.codeItems.find((item) => item.id === selectedNodeId)
+    if (!codeItem) return null
+
+    return (
+      <CodeItemDetailsPanel
+        codeItem={codeItem}
+        file={file}
+        onClose={() => setSelectedNodeId(null)}
+      />
+    )
+  }
+
+  return null
+}
+
+interface FileDetailsPanelProps {
+  file: FileNode
+  graph: ReturnType<typeof useGraphStore>['graph']
+  onClose: () => void
+}
+
+function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.Element {
+  const headerColor = file.color || '#64748b'
+  const textColor = '#ffffff'
+
+  // Find files that import this file
+  const importedBy = graph
+    ? Array.from(graph.files.values()).filter((f) =>
+        f.imports.some((imp) => imp.resolvedFileId === file.id)
+      )
+    : []
+
+  // Get imported files
+  const importsFiles = file.imports
+    .map((imp) => (graph ? graph.files.get(imp.resolvedFileId) : null))
+    .filter((f): f is FileNode => f !== null)
 
   return (
     <aside className="node-details-panel">
       <header
         className="node-details-panel__header"
-        style={{ backgroundColor: colors.backgroundColor }}
+        style={{ backgroundColor: headerColor }}
       >
         <div className="node-details-panel__header-content">
           <span
             className="node-details-panel__badge"
             style={{
               backgroundColor: 'rgba(255, 255, 255, 0.2)',
-              color: colors.textColor
+              color: textColor
             }}
           >
-            {typeLabels[element.type] || element.type}
+            Fichier
           </span>
-          <h2
-            className="node-details-panel__title"
-            style={{ color: colors.textColor }}
-          >
-            {element.name}
+          <h2 className="node-details-panel__title" style={{ color: textColor }}>
+            {file.fileName}
           </h2>
         </div>
         <button
           className="node-details-panel__close"
-          onClick={() => setSelectedNodeId(null)}
-          style={{ color: colors.textColor }}
+          onClick={onClose}
+          style={{ color: textColor }}
           title="Fermer"
         >
           &times;
@@ -79,69 +130,213 @@ export function NodeDetailsPanel(): JSX.Element | null {
       </header>
 
       <div className="node-details-panel__content">
-        {/* Description */}
+        {/* Folder path */}
         <section className="node-details-panel__section">
-          <h3 className="node-details-panel__section-title">Description</h3>
-          <p className="node-details-panel__description">{element.description}</p>
+          <h3 className="node-details-panel__section-title">Dossier</h3>
+          <p className="node-details-panel__value">{file.folder || '/'}</p>
         </section>
 
-        {/* Level */}
+        {/* Full path */}
         <section className="node-details-panel__section">
-          <h3 className="node-details-panel__section-title">Niveau C4</h3>
-          <p className="node-details-panel__value">{levelLabels[element.level]}</p>
+          <h3 className="node-details-panel__section-title">Chemin</h3>
+          <code className="node-details-panel__file-path">{file.relativePath}</code>
         </section>
 
-        {/* File path */}
-        {element.metadata?.filePath && (
+        {/* File type */}
+        <section className="node-details-panel__section">
+          <h3 className="node-details-panel__section-title">Type</h3>
+          <p className="node-details-panel__value">{file.type}</p>
+        </section>
+
+        {/* Community */}
+        {file.communityId && (
           <section className="node-details-panel__section">
-            <h3 className="node-details-panel__section-title">Fichier source</h3>
-            <code className="node-details-panel__file-path">
-              {element.metadata.filePath}
-              {element.metadata.lineNumber && `:${element.metadata.lineNumber}`}
-            </code>
+            <h3 className="node-details-panel__section-title">Communauté</h3>
+            <p className="node-details-panel__value">#{file.communityId}</p>
           </section>
         )}
 
-        {/* Children */}
-        {childElements.length > 0 && (
+        {/* Imports this file makes */}
+        {file.imports.length > 0 && (
           <section className="node-details-panel__section">
             <h3 className="node-details-panel__section-title">
-              Enfants ({childElements.length})
+              Importe ({file.imports.length})
             </h3>
             <ul className="node-details-panel__list">
-              {childElements.map((child) => child && (
-                <li key={child.id} className="node-details-panel__list-item">
+              {importsFiles.map((importedFile) => (
+                <li key={importedFile.id} className="node-details-panel__list-item">
                   <span
                     className="node-details-panel__child-badge"
-                    style={{ backgroundColor: getNodeColors(child.type).backgroundColor }}
+                    style={{ backgroundColor: importedFile.color || '#64748b' }}
                   />
-                  {child.name}
+                  {importedFile.fileName}
                 </li>
               ))}
             </ul>
           </section>
         )}
 
-        {/* Detection sources */}
-        {element.metadata?.detectedVia && element.metadata.detectedVia.length > 0 && (
+        {/* External imports */}
+        {file.externalImports.length > 0 && (
           <section className="node-details-panel__section">
             <h3 className="node-details-panel__section-title">
-              Sources de detection ({element.metadata.detectedVia.length})
+              Imports externes ({file.externalImports.length})
             </h3>
             <ul className="node-details-panel__list">
-              {element.metadata.detectedVia.map((detection, index) => (
-                <li key={index} className="node-details-panel__detection">
-                  <code className="node-details-panel__detection-source">
-                    {detection.source}
-                  </code>
-                  <span className="node-details-panel__detection-location">
-                    {detection.file.split(/[/\\]/).pop()}:{detection.line}
-                  </span>
+              {file.externalImports.slice(0, 10).map((ext) => (
+                <li key={ext.source} className="node-details-panel__list-item">
+                  <code className="node-details-panel__external-import">{ext.source}</code>
+                </li>
+              ))}
+              {file.externalImports.length > 10 && (
+                <li className="node-details-panel__list-item node-details-panel__list-item--more">
+                  +{file.externalImports.length - 10} autres...
+                </li>
+              )}
+            </ul>
+          </section>
+        )}
+
+        {/* Files that import this one */}
+        {importedBy.length > 0 && (
+          <section className="node-details-panel__section">
+            <h3 className="node-details-panel__section-title">
+              Importé par ({importedBy.length})
+            </h3>
+            <ul className="node-details-panel__list">
+              {importedBy.map((f) => (
+                <li key={f.id} className="node-details-panel__list-item">
+                  <span
+                    className="node-details-panel__child-badge"
+                    style={{ backgroundColor: f.color || '#64748b' }}
+                  />
+                  {f.fileName}
                 </li>
               ))}
             </ul>
           </section>
         )}
+
+        {/* Code items in this file */}
+        {file.codeItems.length > 0 && (
+          <section className="node-details-panel__section">
+            <h3 className="node-details-panel__section-title">
+              Déclarations ({file.codeItems.length})
+            </h3>
+            <ul className="node-details-panel__list">
+              {file.codeItems.map((item) => {
+                const displayType = getCodeItemDisplayType(item)
+                return (
+                  <li key={item.id} className="node-details-panel__list-item">
+                    <span className="node-details-panel__code-icon">
+                      {typeIcons[displayType] || '○'}
+                    </span>
+                    <span className="node-details-panel__code-name">{item.name}</span>
+                    {item.isExported && (
+                      <span className="node-details-panel__export-badge">export</span>
+                    )}
+                    {item.isDefault && (
+                      <span className="node-details-panel__default-badge">default</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+interface CodeItemDetailsPanelProps {
+  codeItem: CodeItem
+  file: FileNode
+  onClose: () => void
+}
+
+function CodeItemDetailsPanel({
+  codeItem,
+  file,
+  onClose
+}: CodeItemDetailsPanelProps): JSX.Element {
+  const displayType = getCodeItemDisplayType(codeItem)
+  const headerColor = file.color || '#64748b'
+  const textColor = '#ffffff'
+
+  return (
+    <aside className="node-details-panel">
+      <header
+        className="node-details-panel__header"
+        style={{ backgroundColor: headerColor }}
+      >
+        <div className="node-details-panel__header-content">
+          <span
+            className="node-details-panel__badge"
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+              color: textColor
+            }}
+          >
+            {typeLabels[displayType] || displayType}
+          </span>
+          <h2 className="node-details-panel__title" style={{ color: textColor }}>
+            {codeItem.name}
+          </h2>
+        </div>
+        <button
+          className="node-details-panel__close"
+          onClick={onClose}
+          style={{ color: textColor }}
+          title="Fermer"
+        >
+          &times;
+        </button>
+      </header>
+
+      <div className="node-details-panel__content">
+        {/* File info */}
+        <section className="node-details-panel__section">
+          <h3 className="node-details-panel__section-title">Fichier</h3>
+          <code className="node-details-panel__file-path">
+            {file.relativePath}:{codeItem.line}
+          </code>
+        </section>
+
+        {/* Export status */}
+        <section className="node-details-panel__section">
+          <h3 className="node-details-panel__section-title">Statut</h3>
+          <div className="node-details-panel__badges">
+            {codeItem.isExported ? (
+              <span className="node-details-panel__status-badge node-details-panel__status-badge--exported">
+                Exporté
+              </span>
+            ) : (
+              <span className="node-details-panel__status-badge node-details-panel__status-badge--private">
+                Privé
+              </span>
+            )}
+            {codeItem.isDefault && (
+              <span className="node-details-panel__status-badge node-details-panel__status-badge--default">
+                Default
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* Signature */}
+        {codeItem.signature && (
+          <section className="node-details-panel__section">
+            <h3 className="node-details-panel__section-title">Signature</h3>
+            <code className="node-details-panel__signature">{codeItem.signature}</code>
+          </section>
+        )}
+
+        {/* Line number */}
+        <section className="node-details-panel__section">
+          <h3 className="node-details-panel__section-title">Ligne</h3>
+          <p className="node-details-panel__value">{codeItem.line}</p>
+        </section>
       </div>
     </aside>
   )

@@ -1,14 +1,18 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { useC4Store } from '../../store/c4Store'
-import type { AnalyzedProject } from '../../types/c4.types'
+import { useGraphStore } from '../../store/graphStore'
+import { useGraphNavigation } from '../../hooks/useGraphNavigation'
+import type { AnalyzedGraph, FileNode } from '../../types/graph.types'
+import { getDarkerColor } from '../../utils/colorUtils'
 import './FileTreePanel.less'
 
 interface FileTreeNode {
   name: string
-  path: string // Relative path normalized with /
-  fullPath: string // Absolute path with system separators
+  path: string
+  fullPath: string
   type: 'file' | 'directory'
   children?: FileTreeNode[]
+  color?: string
+  fileId?: string
 }
 
 interface ContextMenuState {
@@ -18,15 +22,13 @@ interface ContextMenuState {
   isDirectory: boolean
 }
 
-// Normalize path to use forward slashes for comparison
 function normalizePath(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
-// Get all parent paths for a file path
 function getParentPaths(filePath: string): string[] {
   const parts = filePath.split('/').filter(Boolean)
-  const paths: string[] = [''] // Root
+  const paths: string[] = ['']
   let current = ''
   for (let i = 0; i < parts.length - 1; i++) {
     current = current ? `${current}/${parts[i]}` : parts[i]
@@ -50,53 +52,30 @@ function sortTree(node: FileTreeNode): void {
   }
 }
 
-function buildFileTree(project: AnalyzedProject | null): FileTreeNode | null {
-  if (!project) return null
+function buildFileTree(graph: AnalyzedGraph | null): FileTreeNode | null {
+  if (!graph) return null
 
-  // Normalize root path for comparison
-  const rootPathNormalized = normalizePath(project.rootPath)
-  const projectName = rootPathNormalized.split('/').filter(Boolean).pop() || project.name
+  const rootPathNormalized = normalizePath(graph.rootPath)
+  const projectName = rootPathNormalized.split('/').filter(Boolean).pop() || graph.name
 
-  // Collect all unique file paths and make them relative to rootPath
-  const filePaths = new Set<string>()
-  for (const level of Object.values(project.levels)) {
-    for (const el of level) {
-      if (el.metadata?.filePath) {
-        let path = normalizePath(el.metadata.filePath)
-        // Remove rootPath prefix if present (make relative)
-        if (path.toLowerCase().startsWith(rootPathNormalized.toLowerCase())) {
-          path = path.slice(rootPathNormalized.length)
-          // Remove leading slash
-          if (path.startsWith('/')) {
-            path = path.slice(1)
-          }
-        }
-        if (path) {
-          filePaths.add(path)
-        }
-      }
-    }
-  }
-
-  if (filePaths.size === 0) return null
-
-  // Build the tree
   const root: FileTreeNode = {
     name: projectName,
     path: '',
-    fullPath: project.rootPath,
+    fullPath: graph.rootPath,
     type: 'directory',
     children: []
   }
 
-  for (const filePath of filePaths) {
-    const parts = filePath.split('/').filter(Boolean)
+  // Build tree from files
+  for (const file of graph.files.values()) {
+    const relativePath = file.relativePath
+    const parts = relativePath.split('/').filter(Boolean)
     let current = root
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
       const isFile = i === parts.length - 1
-      const relativePath = parts.slice(0, i + 1).join('/')
+      const nodePath = parts.slice(0, i + 1).join('/')
       const existingChild = current.children?.find((c) => c.name === part)
 
       if (existingChild) {
@@ -104,10 +83,12 @@ function buildFileTree(project: AnalyzedProject | null): FileTreeNode | null {
       } else {
         const newNode: FileTreeNode = {
           name: part,
-          path: relativePath,
-          fullPath: `${project.rootPath}\\${relativePath.replace(/\//g, '\\')}`,
+          path: nodePath,
+          fullPath: file.filePath.replace(relativePath, nodePath.replace(/\//g, '\\')),
           type: isFile ? 'file' : 'directory',
-          children: isFile ? undefined : []
+          children: isFile ? undefined : [],
+          color: isFile ? file.color : undefined,
+          fileId: isFile ? file.id : undefined
         }
         current.children?.push(newNode)
         current = newNode
@@ -115,18 +96,37 @@ function buildFileTree(project: AnalyzedProject | null): FileTreeNode | null {
     }
   }
 
+  // Assign colors to directories based on their children
+  assignDirectoryColors(root, graph)
   sortTree(root)
   return root
+}
+
+function assignDirectoryColors(node: FileTreeNode, graph: AnalyzedGraph): void {
+  if (node.type === 'file' || !node.children) return
+
+  // Process children first
+  for (const child of node.children) {
+    assignDirectoryColors(child, graph)
+  }
+
+  // Get color from first file child or first colored directory child
+  for (const child of node.children) {
+    if (child.color) {
+      node.color = child.color
+      break
+    }
+  }
 }
 
 interface FileTreeItemProps {
   node: FileTreeNode
   depth: number
   expandedPaths: Set<string>
-  visibleFiles: Set<string>
-  selectedFile: string | null
+  focusedFileId: string | null
   onToggle: (path: string) => void
-  onDoubleClick: (fullPath: string) => void
+  onFileClick: (fileId: string) => void
+  onFileDoubleClick: (fullPath: string) => void
   onContextMenu: (e: React.MouseEvent, fullPath: string, isDirectory: boolean) => void
 }
 
@@ -134,28 +134,29 @@ function FileTreeItem({
   node,
   depth,
   expandedPaths,
-  visibleFiles,
-  selectedFile,
+  focusedFileId,
   onToggle,
-  onDoubleClick,
+  onFileClick,
+  onFileDoubleClick,
   onContextMenu
 }: FileTreeItemProps): JSX.Element {
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
-  const isVisible = visibleFiles.has(node.path)
-  const isSelected = selectedFile === node.path
+  const isFocused = node.fileId === focusedFileId
 
   const handleClick = useCallback(() => {
     if (isDirectory) {
       onToggle(node.path)
+    } else if (node.fileId) {
+      onFileClick(node.fileId)
     }
-  }, [isDirectory, node.path, onToggle])
+  }, [isDirectory, node.path, node.fileId, onToggle, onFileClick])
 
   const handleDoubleClick = useCallback(() => {
     if (!isDirectory) {
-      onDoubleClick(node.fullPath)
+      onFileDoubleClick(node.fullPath)
     }
-  }, [isDirectory, node.fullPath, onDoubleClick])
+  }, [isDirectory, node.fullPath, onFileDoubleClick])
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -165,10 +166,15 @@ function FileTreeItem({
     [node.fullPath, isDirectory, onContextMenu]
   )
 
+  const itemStyle: React.CSSProperties = {
+    paddingLeft: `${depth * 16 + 8}px`,
+    borderLeft: node.color ? `3px solid ${node.color}` : '3px solid transparent',
+    backgroundColor: isFocused ? (node.color ? `${node.color}20` : '#EFF6FF') : undefined
+  }
+
   const itemClasses = [
     'file-tree-panel__item',
-    isVisible && 'file-tree-panel__item--visible',
-    isSelected && 'file-tree-panel__item--selected'
+    isFocused && 'file-tree-panel__item--focused'
   ]
     .filter(Boolean)
     .join(' ')
@@ -177,22 +183,22 @@ function FileTreeItem({
     <>
       <div
         className={itemClasses}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        style={itemStyle}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
       >
         <span className="file-tree-panel__toggle">
-          {isDirectory ? (isExpanded ? '▼' : '▶') : ''}
+          {isDirectory ? (isExpanded ? '\u25BC' : '\u25B6') : ''}
         </span>
-        <span className="file-tree-panel__icon">{isDirectory ? '📁' : '📄'}</span>
+        <span className="file-tree-panel__icon">
+          {isDirectory ? '📁' : '📄'}
+        </span>
         <span className="file-tree-panel__name" title={node.name}>
           {node.name}
         </span>
-        {(isVisible || isSelected) && (
-          <span
-            className={`file-tree-panel__indicator ${isSelected ? 'file-tree-panel__indicator--selected' : 'file-tree-panel__indicator--visible'}`}
-          />
+        {isFocused && (
+          <span className="file-tree-panel__badge">principal</span>
         )}
       </div>
       {isDirectory && isExpanded && node.children && (
@@ -203,10 +209,10 @@ function FileTreeItem({
               node={child}
               depth={depth + 1}
               expandedPaths={expandedPaths}
-              visibleFiles={visibleFiles}
-              selectedFile={selectedFile}
+              focusedFileId={focusedFileId}
               onToggle={onToggle}
-              onDoubleClick={onDoubleClick}
+              onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
               onContextMenu={onContextMenu}
             />
           ))}
@@ -217,89 +223,36 @@ function FileTreeItem({
 }
 
 export function FileTreePanel(): JSX.Element | null {
-  const { project, getVisibleFilePaths, getSelectedFilePath, currentLevel, currentElementId, selectedNodeId } =
-    useC4Store()
+  const { graph, focusedFileId } = useGraphStore()
+  const { focusOnFile } = useGraphNavigation()
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['']))
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
-  // Build the file tree
-  const fileTree = useMemo(() => buildFileTree(project), [project])
+  const fileTree = useMemo(() => buildFileTree(graph), [graph])
 
-  // Get root path normalized for stripping
-  const rootPathNormalized = useMemo(
-    () => (project ? normalizePath(project.rootPath) : ''),
-    [project]
-  )
-
-  // Helper to make path relative to project root
-  const makeRelative = useCallback(
-    (path: string): string => {
-      const normalized = normalizePath(path)
-      if (rootPathNormalized && normalized.toLowerCase().startsWith(rootPathNormalized.toLowerCase())) {
-        let relative = normalized.slice(rootPathNormalized.length)
-        if (relative.startsWith('/')) {
-          relative = relative.slice(1)
-        }
-        return relative
-      }
-      return normalized
-    },
-    [rootPathNormalized]
-  )
-
-  // Get visible files (relative paths)
-  const visibleFiles = useMemo(() => {
-    const rawPaths = getVisibleFilePaths()
-    const relative = new Set<string>()
-    rawPaths.forEach((p) => relative.add(makeRelative(p)))
-    return relative
-  }, [getVisibleFilePaths, currentLevel, currentElementId, makeRelative])
-
-  // Get selected file (relative path)
-  const selectedFile = useMemo(() => {
-    const path = getSelectedFilePath()
-    return path ? makeRelative(path) : null
-  }, [getSelectedFilePath, selectedNodeId, makeRelative])
-
-  // Auto-expand folders containing visible files
+  // Auto-expand to show focused file
   useEffect(() => {
-    if (visibleFiles.size > 0) {
-      const newExpanded = new Set(expandedPaths)
-      newExpanded.add('') // Root always expanded
+    if (focusedFileId && graph) {
+      const file = graph.files.get(focusedFileId)
+      if (file) {
+        const parents = getParentPaths(file.relativePath)
+        const newExpanded = new Set(expandedPaths)
+        let hasNew = false
 
-      visibleFiles.forEach((filePath) => {
-        const parents = getParentPaths(filePath)
-        parents.forEach((p) => newExpanded.add(p))
-      })
+        parents.forEach((p) => {
+          if (!newExpanded.has(p)) {
+            newExpanded.add(p)
+            hasNew = true
+          }
+        })
 
-      // Only update if there are new paths to expand
-      if (newExpanded.size > expandedPaths.size) {
-        setExpandedPaths(newExpanded)
+        if (hasNew) {
+          setExpandedPaths(newExpanded)
+        }
       }
     }
-  }, [visibleFiles])
+  }, [focusedFileId, graph])
 
-  // Auto-expand to show selected file
-  useEffect(() => {
-    if (selectedFile) {
-      const parents = getParentPaths(selectedFile)
-      const newExpanded = new Set(expandedPaths)
-      let hasNew = false
-
-      parents.forEach((p) => {
-        if (!newExpanded.has(p)) {
-          newExpanded.add(p)
-          hasNew = true
-        }
-      })
-
-      if (hasNew) {
-        setExpandedPaths(newExpanded)
-      }
-    }
-  }, [selectedFile])
-
-  // Close context menu on click outside
   useEffect(() => {
     const handleClick = (): void => setContextMenu(null)
     if (contextMenu) {
@@ -320,7 +273,14 @@ export function FileTreePanel(): JSX.Element | null {
     })
   }, [])
 
-  const handleDoubleClick = useCallback((fullPath: string) => {
+  const handleFileClick = useCallback(
+    (fileId: string) => {
+      focusOnFile(fileId)
+    },
+    [focusOnFile]
+  )
+
+  const handleFileDoubleClick = useCallback((fullPath: string) => {
     window.electronAPI.openFile(fullPath)
   }, [])
 
@@ -350,7 +310,7 @@ export function FileTreePanel(): JSX.Element | null {
     }
   }, [contextMenu])
 
-  if (!project) {
+  if (!graph) {
     return (
       <aside className="file-tree-panel">
         <header className="file-tree-panel__header">Arborescence</header>
@@ -370,16 +330,19 @@ export function FileTreePanel(): JSX.Element | null {
 
   return (
     <aside className="file-tree-panel">
-      <header className="file-tree-panel__header">Arborescence</header>
+      <header className="file-tree-panel__header">
+        Arborescence
+        <span className="file-tree-panel__count">{graph.files.size} fichiers</span>
+      </header>
       <div className="file-tree-panel__content">
         <FileTreeItem
           node={fileTree}
           depth={0}
           expandedPaths={expandedPaths}
-          visibleFiles={visibleFiles}
-          selectedFile={selectedFile}
+          focusedFileId={focusedFileId}
           onToggle={handleToggle}
-          onDoubleClick={handleDoubleClick}
+          onFileClick={handleFileClick}
+          onFileDoubleClick={handleFileDoubleClick}
           onContextMenu={handleContextMenu}
         />
       </div>

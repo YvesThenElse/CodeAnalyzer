@@ -12,34 +12,43 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { useC4Store } from '../../store/c4Store'
-import { useC4Navigation } from '../../hooks/useC4Navigation'
-import { C4SystemNode } from './C4SystemNode'
-import { C4ContainerNode } from './C4ContainerNode'
-import { C4ComponentNode } from './C4ComponentNode'
-import { C4CodeNode } from './C4CodeNode'
-import { C4Edge } from './C4Edge'
-import type { C4NodeData } from '../../types/c4.types'
+import { useGraphStore } from '../../store/graphStore'
+import { useGraphNavigation } from '../../hooks/useGraphNavigation'
+import { FileNode } from './FileNode'
+import { CodeItemNode } from './CodeItemNode'
+import { ImportEdge } from './ImportEdge'
+import { GraphLevel, type FileNodeData, type CodeItemNodeData } from '../../types/graph.types'
 
 const nodeTypes = {
-  c4System: C4SystemNode,
-  c4Container: C4ContainerNode,
-  c4Component: C4ComponentNode,
-  c4Code: C4CodeNode
+  fileNode: FileNode,
+  codeItemNode: CodeItemNode
 }
 
 const edgeTypes = {
-  c4Edge: C4Edge
+  importEdge: ImportEdge
 }
 
 export function DiagramView(): JSX.Element {
-  const { project, getVisibleNodesAndEdges, currentLevel, currentElementId, setSelectedNodeId } = useC4Store()
-  const { drillDown, canDrillDown } = useC4Navigation()
+  const {
+    graph,
+    getVisibleNodesAndEdges,
+    currentLevel,
+    focusedFileId,
+    selectedFileId,
+    setSelectedNodeId
+  } = useGraphStore()
+
+  const {
+    handleFileClick,
+    handleFileDoubleClick,
+    handleFileMouseEnter,
+    handleFileMouseLeave
+  } = useGraphNavigation()
 
   // Get nodes and edges from store (depends on navigation state)
   const { nodes: storeNodes, edges: storeEdges } = useMemo(
     () => getVisibleNodesAndEdges(),
-    [getVisibleNodesAndEdges, project, currentLevel, currentElementId]
+    [getVisibleNodesAndEdges, graph, currentLevel, focusedFileId, selectedFileId]
   )
 
   // Listen to selection changes and update store
@@ -62,26 +71,54 @@ export function DiagramView(): JSX.Element {
     setEdges(storeEdges)
   }, [storeNodes, storeEdges, setNodes, setEdges])
 
+  // Handle single click on a node
+  const onNodeClick: NodeMouseHandler = useCallback(
+    (_event, node) => {
+      if (currentLevel === GraphLevel.FILES) {
+        handleFileClick(node.id)
+      }
+    },
+    [currentLevel, handleFileClick]
+  )
+
   // Handle double-click to drill down
   const onNodeDoubleClick: NodeMouseHandler = useCallback(
     (_event, node) => {
-      const nodeData = node.data as C4NodeData
-      if (canDrillDown && nodeData.hasChildren) {
-        drillDown(nodeData.element.id)
+      if (currentLevel === GraphLevel.FILES) {
+        handleFileDoubleClick(node.id)
       }
     },
-    [drillDown, canDrillDown]
+    [currentLevel, handleFileDoubleClick]
+  )
+
+  // Handle mouse enter/leave for highlighting
+  const onNodeMouseEnter: NodeMouseHandler = useCallback(
+    (_event, node) => {
+      if (currentLevel === GraphLevel.FILES) {
+        handleFileMouseEnter(node.id)
+      }
+    },
+    [currentLevel, handleFileMouseEnter]
+  )
+
+  const onNodeMouseLeave: NodeMouseHandler = useCallback(
+    () => {
+      if (currentLevel === GraphLevel.FILES) {
+        handleFileMouseLeave()
+      }
+    },
+    [currentLevel, handleFileMouseLeave]
   )
 
   // Empty state
-  if (!project) {
+  if (!graph) {
     return (
       <div className="empty-state">
-        <div className="empty-state__icon">📊</div>
-        <h2 className="empty-state__title">Aucun projet analysé</h2>
+        <div className="empty-state__icon">📈</div>
+        <h2 className="empty-state__title">Aucun projet analyse</h2>
         <p className="empty-state__description">
-          Sélectionnez un répertoire contenant un projet React pour générer un diagramme C4
-          interactif.
+          Selectionnez un repertoire contenant un projet React pour visualiser
+          le graphe de dependances.
         </p>
       </div>
     )
@@ -92,57 +129,56 @@ export function DiagramView(): JSX.Element {
     return (
       <div className="empty-state">
         <div className="empty-state__icon">📁</div>
-        <h2 className="empty-state__title">Aucun élément à ce niveau</h2>
+        <h2 className="empty-state__title">Aucun element a afficher</h2>
         <p className="empty-state__description">
-          Ce niveau ne contient pas d&apos;éléments. Utilisez le breadcrumb pour naviguer
-          vers un autre niveau.
+          {currentLevel === GraphLevel.CODE
+            ? 'Ce fichier ne contient pas de declarations.'
+            : 'Aucun fichier trouve.'}
         </p>
       </div>
     )
   }
 
   return (
-    <div className="diagram-view">
+    <div className="diagram-view" style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes as any}
-        edgeTypes={edgeTypes}
+        edgeTypes={edgeTypes as any}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.3, maxZoom: 1.5 }}
         attributionPosition="bottom-left"
         minZoom={0.1}
         maxZoom={2}
+        proOptions={{ hideAttribution: true }}
       >
-        <Background color="#E0E0E0" gap={20} />
+        <Background color="#E5E7EB" gap={20} />
         <Controls />
         <MiniMap
           nodeColor={(node: Node) => {
-            const data = node.data as C4NodeData
-            if (!data?.element?.type) return '#CCCCCC'
-            switch (data.element.type) {
-              case 'person':
-                return '#08427B'
-              case 'system':
-                return '#1168BD'
-              case 'external_system':
-                return '#999999'
-              case 'cloud_service':
-                return '#DD8400'
-              case 'container_frontend':
-              case 'container_backend':
-              case 'container_database':
-                return '#438DD5'
-              case 'component':
-                return '#85BBF0'
-              default:
-                return '#FFFFFF'
+            if (node.type === 'fileNode') {
+              const data = node.data as FileNodeData
+              return data?.file?.color || '#94a3b8'
             }
+            if (node.type === 'codeItemNode') {
+              const data = node.data as CodeItemNodeData
+              return data?.file?.color || '#94a3b8'
+            }
+            return '#94a3b8'
           }}
-          maskColor="rgba(0, 0, 0, 0.1)"
+          maskColor="rgba(0, 0, 0, 0.08)"
+          style={{
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px'
+          }}
         />
       </ReactFlow>
     </div>
