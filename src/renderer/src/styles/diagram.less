@@ -1,0 +1,194 @@
+@import './variables.less';
+
+// ===== DIAGRAM VIEW =====
+.diagram-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+// ===== C4 NODE BASE =====
+.c4-node {
+  width: @node-width;
+  min-height: @node-min-height;
+  padding: @node-padding;
+  border-radius: @node-border-radius;
+  border-width: @node-border-width;
+  border-style: solid;
+  cursor: pointer;
+  transition: transform @transition-normal, box-shadow @transition-normal;
+  font-family: @font-family;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: @shadow-node-hover;
+  }
+
+  &.selected {
+    box-shadow: 0 0 0 3px rgba(17, 104, 189, 0.5);
+  }
+
+  // Content
+  &__content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: calc(@node-min-height - @node-padding * 2);
+  }
+
+  &__title {
+    font-size: @font-size-md;
+    font-weight: @font-weight-bold;
+    margin: 0 0 @spacing-xs;
+    line-height: 1.3;
+  }
+
+  &__description {
+    font-size: @font-size-sm;
+    margin: 0;
+    opacity: 0.9;
+    line-height: 1.4;
+  }
+
+  &__indicator {
+    display: block;
+    font-size: @font-size-xs;
+    margin-top: @spacing-sm;
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  &__badge {
+    display: inline-block;
+    font-size: @font-size-xs;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    margin-top: @spacing-xs;
+  }
+
+  // ===== NODE TYPE VARIANTS =====
+
+  // Person/Actor
+  &--person {
+    background: @c4-person-bg;
+    border-color: @c4-person-border;
+    color: @text-light;
+    border-radius: 50% 50% @node-border-radius @node-border-radius;
+  }
+
+  // Main System
+  &--system {
+    background: @c4-system-bg;
+    border-color: @c4-system-border;
+    color: @text-light;
+  }
+
+  // External System
+  &--external_system {
+    background: @c4-external-bg;
+    border-color: @c4-external-border;
+    color: @text-light;
+  }
+
+  // Cloud Service
+  &--cloud_service {
+    background: @c4-cloud-bg;
+    border-color: @c4-cloud-border;
+    color: @text-light;
+  }
+
+  // Containers (Frontend, Backend, Database)
+  &--container_frontend,
+  &--container_backend,
+  &--container_database {
+    background: @c4-container-bg;
+    border-color: @c4-container-border;
+    color: @text-light;
+  }
+
+  &--container_database {
+    border-radius: @node-border-radius @node-border-radius 50% 50%;
+  }
+
+  // Component
+  &--component {
+    background: @c4-component-bg;
+    border-color: @c4-component-border;
+    color: @text-dark;
+  }
+
+  // Code (Function, Component, Hook)
+  &--code_function,
+  &--code_component,
+  &--code_hook {
+    background: @c4-code-bg;
+    border-color: @c4-code-border;
+    color: @text-dark;
+    min-height: 60px;
+  }
+
+  &--code_hook {
+    .c4-node__title::before {
+      content: 'use';
+      color: @c4-system-bg;
+    }
+  }
+}
+
+// ===== C4 EDGE =====
+.c4-edge {
+  &__label {
+    font-size: @font-size-xs;
+    fill: @text-muted;
+    background: @edge-label-bg;
+    padding: 2px 4px;
+  }
+
+  path {
+    stroke: @edge-color;
+    stroke-width: 1.5px;
+  }
+
+  &--animated path {
+    stroke-dasharray: 5;
+    animation: dash 0.5s linear infinite;
+  }
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+// ===== REACT FLOW OVERRIDES =====
+.react-flow {
+  background: @bg-primary;
+
+  .react-flow__node {
+    &.selected {
+      .c4-node {
+        box-shadow: 0 0 0 3px rgba(17, 104, 189, 0.5);
+      }
+    }
+  }
+
+  .react-flow__edge-path {
+    stroke: @edge-color;
+    stroke-width: 2px;
+  }
+
+  .react-flow__edge-text {
+    font-size: @font-size-xs;
+  }
+
+  .react-flow__controls {
+    box-shadow: @shadow-md;
+  }
+
+  .react-flow__minimap {
+    box-shadow: @shadow-md;
+  }
+}

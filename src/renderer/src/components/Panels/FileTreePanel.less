@@ -1,0 +1,135 @@
+@import '../../styles/variables.less';
+
+.file-tree-panel {
+  width: 280px;
+  flex-shrink: 0;
+  background: @bg-secondary;
+  border-right: 1px solid @border-color;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &__header {
+    padding: @spacing-md;
+    font-weight: @font-weight-bold;
+    font-size: @font-size-md;
+    border-bottom: 1px solid @border-color;
+    background: @bg-secondary;
+  }
+
+  &__content {
+    flex: 1;
+    overflow-y: auto;
+    padding: @spacing-xs 0;
+  }
+
+  &__empty {
+    padding: @spacing-lg;
+    text-align: center;
+    color: @text-muted;
+    font-size: @font-size-sm;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: @font-size-sm;
+    transition: background @transition-fast;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    &--visible {
+      background: rgba(17, 104, 189, 0.08);
+
+      &:hover {
+        background: rgba(17, 104, 189, 0.12);
+      }
+    }
+
+    &--selected {
+      background: rgba(17, 104, 189, 0.2);
+      font-weight: @font-weight-medium;
+
+      &:hover {
+        background: rgba(17, 104, 189, 0.25);
+      }
+    }
+  }
+
+  &__toggle {
+    width: 14px;
+    font-size: 10px;
+    text-align: center;
+    color: @text-muted;
+    flex-shrink: 0;
+  }
+
+  &__icon {
+    width: 16px;
+    text-align: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  &__name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: @text-dark;
+  }
+
+  &__indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+
+    &--visible {
+      background: @c4-system-bg;
+    }
+
+    &--selected {
+      background: @c4-cloud-bg;
+    }
+  }
+
+  &__children {
+    // Children are rendered inline, indentation handled by padding
+  }
+
+  &__context-menu {
+    position: fixed;
+    background: @bg-secondary;
+    border: 1px solid @border-color;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    padding: 4px;
+    min-width: 160px;
+
+    button {
+      display: block;
+      width: 100%;
+      padding: @spacing-sm @spacing-md;
+      border: none;
+      background: none;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: @font-size-sm;
+      color: @text-dark;
+      transition: background @transition-fast;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+    }
+  }
+}
