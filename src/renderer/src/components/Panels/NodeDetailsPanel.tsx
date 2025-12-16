@@ -61,18 +61,25 @@ function EmptyPanel(): JSX.Element {
 }
 
 export function NodeDetailsPanel(): JSX.Element {
-  const { graph, currentLevel, selectedFileId, selectedNodeId, setSelectedNodeId } = useGraphStore()
+  const { graph, currentLevel, selectedFileId, selectedNodeId, setSelectedNodeId, focusedFileId } = useGraphStore()
 
-  if (!graph || !selectedNodeId) {
+  if (!graph) {
     return <EmptyPanel />
   }
 
   // Files level - show file details
   if (currentLevel === GraphLevel.FILES) {
-    const file = graph.files.get(selectedNodeId)
+    // Priority: selectedNodeId > focusedFileId
+    const fileIdToShow = selectedNodeId || focusedFileId
+    if (!fileIdToShow) return <EmptyPanel />
+
+    const file = graph.files.get(fileIdToShow)
     if (!file) return <EmptyPanel />
 
-    return <FileDetailsPanel file={file} graph={graph} onClose={() => setSelectedNodeId(null)} />
+    // Only show close button if it's a selection (not just focused)
+    const handleClose = selectedNodeId ? () => setSelectedNodeId(null) : undefined
+
+    return <FileDetailsPanel file={file} graph={graph} onClose={handleClose} />
   }
 
   // Code level - show code item details
@@ -80,16 +87,21 @@ export function NodeDetailsPanel(): JSX.Element {
     const file = graph.files.get(selectedFileId)
     if (!file) return <EmptyPanel />
 
-    const codeItem = file.codeItems.find((item) => item.id === selectedNodeId)
-    if (!codeItem) return <EmptyPanel />
+    if (selectedNodeId) {
+      const codeItem = file.codeItems.find((item) => item.id === selectedNodeId)
+      if (codeItem) {
+        return (
+          <CodeItemDetailsPanel
+            codeItem={codeItem}
+            file={file}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )
+      }
+    }
 
-    return (
-      <CodeItemDetailsPanel
-        codeItem={codeItem}
-        file={file}
-        onClose={() => setSelectedNodeId(null)}
-      />
-    )
+    // Show file details if no code item is selected
+    return <FileDetailsPanel file={file} graph={graph} onClose={undefined} />
   }
 
   return <EmptyPanel />
@@ -98,7 +110,7 @@ export function NodeDetailsPanel(): JSX.Element {
 interface FileDetailsPanelProps {
   file: FileNode
   graph: ReturnType<typeof useGraphStore>['graph']
-  onClose: () => void
+  onClose?: () => void
 }
 
 function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.Element {
@@ -138,14 +150,16 @@ function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.
             {file.fileName}
           </h2>
         </div>
-        <button
-          className="node-details-panel__close"
-          onClick={onClose}
-          style={{ color: textColor }}
-          title="Fermer"
-        >
-          &times;
-        </button>
+        {onClose && (
+          <button
+            className="node-details-panel__close"
+            onClick={onClose}
+            style={{ color: textColor }}
+            title="Fermer"
+          >
+            &times;
+          </button>
+        )}
       </header>
 
       <div className="node-details-panel__content">
