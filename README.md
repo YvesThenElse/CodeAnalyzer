@@ -6,6 +6,8 @@ Interactive dependency graph viewer for TypeScript/JavaScript projects.
 
 CodeAnalyzer is a desktop application that analyzes source code from TypeScript/JavaScript projects and generates interactive dependency graphs with multi-level navigation.
 
+![Screenshot](images/screenshot.png)
+
 ## Features
 
 - **Automatic Analysis** - Parses TypeScript/JavaScript/JSX/TSX files using AST
@@ -155,6 +157,7 @@ The analyzer skips these directories:
 - [ ] Improve error handling for malformed files
 - [ ] Add search/filter functionality in file tree
 - [ ] Add platform-specific binaries (Windows, macOS, Linux)
+- [ ] Improve code level display
 
 ### Phase 2 - Framework Support
 - [ ] **Angular** - Support for Angular modules, components, services, and dependency injection
