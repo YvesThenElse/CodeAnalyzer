@@ -289,11 +289,58 @@ function traverseAST(node: TSESTree.Node, result: FileAnalysisResult, isExported
 }
 
 /**
+ * Check if an import source is a path alias (not a real npm package)
+ * Common patterns in TypeScript/Vite/Webpack projects
+ */
+function isPathAlias(source: string): boolean {
+  const aliasPatterns = [
+    /^@\//,              // @/ - root alias
+    /^@[a-z][a-z0-9-]*\//i,  // @components/, @utils/, @renderer/, etc. (but not @scope/pkg)
+    /^~\//,              // ~/ - home alias
+    /^#\//,              // #/ - alternative alias
+    /^src\//,            // src/ - direct src reference
+    /^app\//,            // app/ - Next.js app directory
+    /^lib\//,            // lib/ - common lib folder
+    /^utils\//,          // utils/ - utils folder
+    /^components\//,     // components/ - components folder
+    /^hooks\//,          // hooks/ - hooks folder
+    /^stores\//,         // stores/ - stores folder
+    /^services\//,       // services/ - services folder
+    /^types\//,          // types/ - types folder
+  ]
+
+  // Also exclude scoped npm packages like @types/xxx, @babel/xxx, @emotion/xxx
+  // These are real external packages, not aliases
+  const scopedPackagePattern = /^@[a-z][a-z0-9-]*\/[a-z]/i
+  if (scopedPackagePattern.test(source)) {
+    // Check if it's a known npm scope (not a project alias)
+    const knownNpmScopes = [
+      '@types/', '@babel/', '@emotion/', '@mui/', '@chakra-ui/',
+      '@radix-ui/', '@tanstack/', '@trpc/', '@prisma/', '@nestjs/',
+      '@angular/', '@vue/', '@nuxt/', '@svelte/', '@testing-library/',
+      '@storybook/', '@typescript-eslint/', '@eslint/', '@vitejs/',
+      '@aws-sdk/', '@azure/', '@google-cloud/', '@firebase/',
+      '@supabase/', '@stripe/', '@sendgrid/', '@xyflow/',
+      '@electron-toolkit/', '@electron/'
+    ]
+    if (knownNpmScopes.some(scope => source.startsWith(scope))) {
+      return false // It's a real npm scoped package
+    }
+  }
+
+  return aliasPatterns.some(pattern => pattern.test(source))
+}
+
+/**
  * Handle import declarations
  */
 function handleImport(node: TSESTree.ImportDeclaration, result: FileAnalysisResult): void {
   const source = node.source.value as string
-  const isExternal = !source.startsWith('.') && !source.startsWith('/')
+
+  // Determine if import is external (npm package) or internal (relative/alias)
+  const isRelative = source.startsWith('.') || source.startsWith('/')
+  const isAlias = isPathAlias(source)
+  const isExternal = !isRelative && !isAlias
 
   const specifiers = node.specifiers.map((spec) => {
     if (spec.type === 'ImportDefaultSpecifier') {

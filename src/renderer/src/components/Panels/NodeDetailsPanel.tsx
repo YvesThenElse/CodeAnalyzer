@@ -42,17 +42,35 @@ function getCodeItemDisplayType(item: CodeItem): string {
   return item.type
 }
 
-export function NodeDetailsPanel(): JSX.Element | null {
+function EmptyPanel(): JSX.Element {
+  return (
+    <aside className="node-details-panel">
+      <header className="node-details-panel__header node-details-panel__header--empty">
+        <div className="node-details-panel__header-content">
+          <h2 className="node-details-panel__title">Détails</h2>
+        </div>
+      </header>
+      <div className="node-details-panel__content">
+        <div className="node-details-panel__empty">
+          <span className="node-details-panel__empty-icon">📋</span>
+          <p>Sélectionnez un élément pour voir ses détails</p>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+export function NodeDetailsPanel(): JSX.Element {
   const { graph, currentLevel, selectedFileId, selectedNodeId, setSelectedNodeId } = useGraphStore()
 
   if (!graph || !selectedNodeId) {
-    return null
+    return <EmptyPanel />
   }
 
   // Files level - show file details
   if (currentLevel === GraphLevel.FILES) {
     const file = graph.files.get(selectedNodeId)
-    if (!file) return null
+    if (!file) return <EmptyPanel />
 
     return <FileDetailsPanel file={file} graph={graph} onClose={() => setSelectedNodeId(null)} />
   }
@@ -60,10 +78,10 @@ export function NodeDetailsPanel(): JSX.Element | null {
   // Code level - show code item details
   if (currentLevel === GraphLevel.CODE && selectedFileId) {
     const file = graph.files.get(selectedFileId)
-    if (!file) return null
+    if (!file) return <EmptyPanel />
 
     const codeItem = file.codeItems.find((item) => item.id === selectedNodeId)
-    if (!codeItem) return null
+    if (!codeItem) return <EmptyPanel />
 
     return (
       <CodeItemDetailsPanel
@@ -74,7 +92,7 @@ export function NodeDetailsPanel(): JSX.Element | null {
     )
   }
 
-  return null
+  return <EmptyPanel />
 }
 
 interface FileDetailsPanelProps {

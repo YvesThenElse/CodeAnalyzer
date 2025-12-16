@@ -3,7 +3,6 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Header } from './components/Controls/Header'
 import { BackButton } from './components/Controls/BackButton'
-import { ClusteringToggle } from './components/Controls/ClusteringToggle'
 import { DiagramView } from './components/Diagram/DiagramView'
 import { LoadingOverlay } from './components/Controls/LoadingOverlay'
 import { NodeDetailsPanel } from './components/Panels/NodeDetailsPanel'
@@ -69,7 +68,6 @@ function App(): JSX.Element {
           </header>
           <nav className="app__toolbar">
             <BackButton />
-            <ClusteringToggle />
           </nav>
           <div className="app__main">
             <FileTreePanel />

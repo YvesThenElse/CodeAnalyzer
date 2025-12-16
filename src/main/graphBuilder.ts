@@ -314,6 +314,65 @@ function buildImportRelationsWithSources(
 }
 
 /**
+ * Try to resolve an alias import to a path
+ * Common alias patterns: @/, @components/, ~/src/, etc.
+ */
+function resolveAliasPath(importSource: string): string | null {
+  // @/ or @src/ -> src/
+  if (importSource.startsWith('@/')) {
+    return 'src/' + importSource.slice(2)
+  }
+
+  // @src/ -> src/
+  if (importSource.startsWith('@src/')) {
+    return 'src/' + importSource.slice(5)
+  }
+
+  // ~/ -> src/
+  if (importSource.startsWith('~/')) {
+    return 'src/' + importSource.slice(2)
+  }
+
+  // @renderer/ -> src/renderer/ (Electron projects)
+  if (importSource.startsWith('@renderer/')) {
+    return 'src/renderer/' + importSource.slice(10)
+  }
+
+  // @main/ -> src/main/ (Electron projects)
+  if (importSource.startsWith('@main/')) {
+    return 'src/main/' + importSource.slice(6)
+  }
+
+  // @components/, @utils/, @hooks/, @stores/, @types/, @services/, @lib/, @api/, @assets/
+  // These commonly map to src/<folder>/
+  const commonFolderAliases = [
+    'components', 'utils', 'hooks', 'stores', 'store', 'types',
+    'services', 'lib', 'api', 'assets', 'styles', 'config',
+    'helpers', 'constants', 'context', 'contexts', 'features',
+    'pages', 'views', 'layouts', 'shared', 'common', 'modules'
+  ]
+
+  for (const folder of commonFolderAliases) {
+    const aliasPattern = `@${folder}/`
+    if (importSource.startsWith(aliasPattern)) {
+      return 'src/' + folder + '/' + importSource.slice(aliasPattern.length)
+    }
+  }
+
+  // #/ -> src/ (alternative alias)
+  if (importSource.startsWith('#/')) {
+    return 'src/' + importSource.slice(2)
+  }
+
+  // src/ without alias (direct reference)
+  if (importSource.startsWith('src/')) {
+    return importSource
+  }
+
+  return null
+}
+
+/**
  * Resolve import path (e.g., './Button', '../hooks/useAuth') to file ID
  */
 function resolveImportPath(
@@ -334,8 +393,14 @@ function resolveImportPath(
     // Absolute from root
     resolvedPath = importSource.slice(1)
   } else {
-    // Alias or external - can't resolve without config
-    return null
+    // Try to resolve as alias
+    const aliasResolved = resolveAliasPath(importSource)
+    if (aliasResolved) {
+      resolvedPath = aliasResolved
+    } else {
+      // Can't resolve without config
+      return null
+    }
   }
 
   // Try different file extensions
@@ -348,11 +413,22 @@ function resolveImportPath(
     }
   }
 
-  // Try without 'src/' prefix if present
+  // Try without 'src/' prefix if present (in case file IDs don't include src/)
   if (resolvedPath.startsWith('src/')) {
     const withoutSrc = resolvedPath.slice(4)
     for (const ext of extensions) {
       const candidate = withoutSrc + ext
+      if (files.has(candidate)) {
+        return candidate
+      }
+    }
+  }
+
+  // Try with 'src/' prefix if not present (in case file IDs include src/)
+  if (!resolvedPath.startsWith('src/')) {
+    const withSrc = 'src/' + resolvedPath
+    for (const ext of extensions) {
+      const candidate = withSrc + ext
       if (files.has(candidate)) {
         return candidate
       }

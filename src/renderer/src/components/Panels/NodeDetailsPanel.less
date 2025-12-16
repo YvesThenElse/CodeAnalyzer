@@ -16,6 +16,32 @@
     justify-content: space-between;
     padding: @spacing-md;
     gap: @spacing-sm;
+
+    &--empty {
+      background: #64748b;
+      color: #ffffff;
+    }
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: @spacing-xl @spacing-lg;
+    text-align: center;
+    color: @text-muted;
+
+    p {
+      margin: 0;
+      font-size: @font-size-sm;
+    }
+  }
+
+  &__empty-icon {
+    font-size: 32px;
+    margin-bottom: @spacing-md;
+    opacity: 0.5;
   }
 
   &__header-content {
