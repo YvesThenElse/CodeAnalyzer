@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -7,6 +7,7 @@ import {
   useNodesState,
   useEdgesState,
   useOnSelectionChange,
+  useReactFlow,
   type Node,
   type NodeMouseHandler
 } from '@xyflow/react'
@@ -45,6 +46,10 @@ export function DiagramView(): JSX.Element {
     handleFileMouseLeave
   } = useGraphNavigation()
 
+  const { fitView, setCenter, getNode } = useReactFlow()
+  const prevFocusedFileId = useRef<string | null>(null)
+  const prevCurrentLevel = useRef<GraphLevel>(currentLevel)
+
   // Get nodes and edges from store (depends on navigation state)
   const { nodes: storeNodes, edges: storeEdges } = useMemo(
     () => getVisibleNodesAndEdges(),
@@ -70,6 +75,41 @@ export function DiagramView(): JSX.Element {
     setNodes(storeNodes)
     setEdges(storeEdges)
   }, [storeNodes, storeEdges, setNodes, setEdges])
+
+  // Auto-center on focused file or fit view when view changes
+  useEffect(() => {
+    const hasViewChanged =
+      prevFocusedFileId.current !== focusedFileId ||
+      prevCurrentLevel.current !== currentLevel
+
+    if (hasViewChanged && storeNodes.length > 0) {
+      // Small delay to ensure nodes are rendered
+      const timeoutId = setTimeout(() => {
+        if (focusedFileId && currentLevel === GraphLevel.FILES) {
+          // Try to center on the focused node
+          const focusedNode = getNode(focusedFileId)
+          if (focusedNode && focusedNode.position) {
+            setCenter(
+              focusedNode.position.x + 100, // offset for node width
+              focusedNode.position.y + 50,  // offset for node height
+              { zoom: 1, duration: 300 }
+            )
+          } else {
+            // Fallback to fitView
+            fitView({ padding: 0.3, maxZoom: 1.5, duration: 300 })
+          }
+        } else {
+          // Fit all nodes in view
+          fitView({ padding: 0.3, maxZoom: 1.5, duration: 300 })
+        }
+      }, 50)
+
+      prevFocusedFileId.current = focusedFileId
+      prevCurrentLevel.current = currentLevel
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [focusedFileId, currentLevel, storeNodes, fitView, setCenter, getNode])
 
   // Handle single click on a node
   const onNodeClick: NodeMouseHandler = useCallback(

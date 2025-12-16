@@ -23927,14 +23927,44 @@ function FileNodeComponent({ data, selected: selected2 }) {
         className: "file-node__stats",
         style: {
           display: "flex",
-          gap: "12px",
+          gap: "10px",
           fontSize: "11px",
-          opacity: 0.8
+          opacity: 0.85
         }
       },
-      /* @__PURE__ */ React$2.createElement("span", { title: "Imports (ce fichier importe)" }, "\\u2192 ", importCount),
-      /* @__PURE__ */ React$2.createElement("span", { title: "Dependants (fichiers qui importent celui-ci)" }, "\\u2190 ", dependentCount),
-      /* @__PURE__ */ React$2.createElement("span", { title: "Declarations" }, "📝 ", file.codeItems.length)
+      /* @__PURE__ */ React$2.createElement(
+        "span",
+        {
+          title: `Imports: ${importCount}
+Ce fichier importe ${importCount} autre(s) fichier(s) du projet`,
+          style: { cursor: "help", display: "flex", alignItems: "center", gap: "3px" }
+        },
+        /* @__PURE__ */ React$2.createElement("span", { style: { fontSize: "13px" } }, "→"),
+        " ",
+        importCount
+      ),
+      /* @__PURE__ */ React$2.createElement(
+        "span",
+        {
+          title: `Dépendants: ${dependentCount}
+${dependentCount} fichier(s) importent ce fichier`,
+          style: { cursor: "help", display: "flex", alignItems: "center", gap: "3px" }
+        },
+        /* @__PURE__ */ React$2.createElement("span", { style: { fontSize: "13px" } }, "←"),
+        " ",
+        dependentCount
+      ),
+      /* @__PURE__ */ React$2.createElement(
+        "span",
+        {
+          title: `Déclarations: ${file.codeItems.length}
+Fonctions, classes, composants, hooks, types... exportés ou non`,
+          style: { cursor: "help", display: "flex", alignItems: "center", gap: "3px" }
+        },
+        /* @__PURE__ */ React$2.createElement("span", null, "📝"),
+        " ",
+        file.codeItems.length
+      )
     ),
     isPrimary && /* @__PURE__ */ React$2.createElement(
       "div",
@@ -24193,6 +24223,9 @@ function DiagramView() {
     handleFileMouseEnter,
     handleFileMouseLeave
   } = useGraphNavigation();
+  const { fitView, setCenter, getNode } = useReactFlow();
+  const prevFocusedFileId = reactExports.useRef(null);
+  const prevCurrentLevel = reactExports.useRef(currentLevel);
   const { nodes: storeNodes, edges: storeEdges } = reactExports.useMemo(
     () => getVisibleNodesAndEdges(),
     [getVisibleNodesAndEdges, graph2, currentLevel, focusedFileId, selectedFileId]
@@ -24212,6 +24245,32 @@ function DiagramView() {
     setNodes(storeNodes);
     setEdges(storeEdges);
   }, [storeNodes, storeEdges, setNodes, setEdges]);
+  reactExports.useEffect(() => {
+    const hasViewChanged = prevFocusedFileId.current !== focusedFileId || prevCurrentLevel.current !== currentLevel;
+    if (hasViewChanged && storeNodes.length > 0) {
+      const timeoutId = setTimeout(() => {
+        if (focusedFileId && currentLevel === GraphLevel.FILES) {
+          const focusedNode = getNode(focusedFileId);
+          if (focusedNode && focusedNode.position) {
+            setCenter(
+              focusedNode.position.x + 100,
+              // offset for node width
+              focusedNode.position.y + 50,
+              // offset for node height
+              { zoom: 1, duration: 300 }
+            );
+          } else {
+            fitView({ padding: 0.3, maxZoom: 1.5, duration: 300 });
+          }
+        } else {
+          fitView({ padding: 0.3, maxZoom: 1.5, duration: 300 });
+        }
+      }, 50);
+      prevFocusedFileId.current = focusedFileId;
+      prevCurrentLevel.current = currentLevel;
+      return () => clearTimeout(timeoutId);
+    }
+  }, [focusedFileId, currentLevel, storeNodes, fitView, setCenter, getNode]);
   const onNodeClick = reactExports.useCallback(
     (_event, node) => {
       if (currentLevel === GraphLevel.FILES) {

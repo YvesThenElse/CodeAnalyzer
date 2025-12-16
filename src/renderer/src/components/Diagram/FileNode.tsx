@@ -100,19 +100,28 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
         className="file-node__stats"
         style={{
           display: 'flex',
-          gap: '12px',
+          gap: '10px',
           fontSize: '11px',
-          opacity: 0.8
+          opacity: 0.85
         }}
       >
-        <span title="Imports (ce fichier importe)">
-          \u2192 {importCount}
+        <span
+          title={`Imports: ${importCount}\nCe fichier importe ${importCount} autre(s) fichier(s) du projet`}
+          style={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: '3px' }}
+        >
+          <span style={{ fontSize: '13px' }}>→</span> {importCount}
         </span>
-        <span title="Dependants (fichiers qui importent celui-ci)">
-          \u2190 {dependentCount}
+        <span
+          title={`Dépendants: ${dependentCount}\n${dependentCount} fichier(s) importent ce fichier`}
+          style={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: '3px' }}
+        >
+          <span style={{ fontSize: '13px' }}>←</span> {dependentCount}
         </span>
-        <span title="Declarations">
-          📝 {file.codeItems.length}
+        <span
+          title={`Déclarations: ${file.codeItems.length}\nFonctions, classes, composants, hooks, types... exportés ou non`}
+          style={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: '3px' }}
+        >
+          <span>📝</span> {file.codeItems.length}
         </span>
       </div>
 
