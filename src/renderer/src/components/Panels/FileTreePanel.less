@@ -34,14 +34,38 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
+    padding: 5px 8px;
     cursor: pointer;
     user-select: none;
     font-size: @font-size-sm;
-    transition: background @transition-fast;
+    transition: all @transition-fast;
 
     &:hover {
       background: rgba(0, 0, 0, 0.05);
+      transform: translateX(2px);
+    }
+
+    &--file {
+      // Files have colored gradient backgrounds
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+      &:hover {
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        filter: brightness(0.98);
+      }
+    }
+
+    &--focused {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+      &:hover {
+        filter: brightness(1.05);
+      }
+
+      .file-tree-panel__toggle,
+      .file-tree-panel__icon {
+        filter: brightness(10);
+      }
     }
 
     &--visible {
@@ -60,6 +84,24 @@
         background: rgba(17, 104, 189, 0.25);
       }
     }
+  }
+
+  &__badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    color: #ffffff;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  &__count {
+    font-size: @font-size-xs;
+    color: @text-muted;
+    font-weight: normal;
+    margin-left: @spacing-sm;
   }
 
   &__toggle {

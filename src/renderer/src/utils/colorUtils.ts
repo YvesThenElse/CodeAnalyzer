@@ -173,3 +173,52 @@ export function getCommunityColor(communityIndex: number, totalCommunities: numb
 
   return `hsl(${Math.round(hue)}, 65%, 55%)`
 }
+
+/**
+ * Generate a subtle gradient background from a color
+ * Used for file cards and tree items
+ */
+export function getGradientBackground(hslColor: string, direction: 'to right' | 'to bottom' = 'to right'): string {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
+  if (!match) return `linear-gradient(${direction}, #f8fafc, #ffffff)`
+
+  const h = parseInt(match[1], 10)
+  const s = parseInt(match[2], 10)
+
+  // Create a subtle gradient from the color (very light) to white
+  const startColor = `hsl(${h}, ${Math.min(s, 40)}%, 95%)`
+  const endColor = `hsl(${h}, ${Math.min(s, 20)}%, 99%)`
+
+  return `linear-gradient(${direction}, ${startColor}, ${endColor})`
+}
+
+/**
+ * Generate a more vibrant gradient for highlighted/hovered items
+ */
+export function getVibrantGradientBackground(hslColor: string, direction: 'to right' | 'to bottom' = 'to right'): string {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
+  if (!match) return `linear-gradient(${direction}, #e0f2fe, #f0f9ff)`
+
+  const h = parseInt(match[1], 10)
+  const s = parseInt(match[2], 10)
+
+  // Create a more noticeable gradient
+  const startColor = `hsl(${h}, ${Math.min(s, 50)}%, 90%)`
+  const endColor = `hsl(${h}, ${Math.min(s, 30)}%, 97%)`
+
+  return `linear-gradient(${direction}, ${startColor}, ${endColor})`
+}
+
+/**
+ * Get color with alpha channel
+ */
+export function getColorWithAlpha(hslColor: string, alpha: number): string {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
+  if (!match) return `rgba(100, 116, 139, ${alpha})`
+
+  const h = parseInt(match[1], 10)
+  const s = parseInt(match[2], 10)
+  const l = parseInt(match[3], 10)
+
+  return `hsla(${h}, ${s}%, ${l}%, ${alpha})`
+}

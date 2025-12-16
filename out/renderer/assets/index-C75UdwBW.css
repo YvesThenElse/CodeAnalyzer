@@ -880,14 +880,32 @@ svg.react-flow__connectionline {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   cursor: pointer;
   user-select: none;
   font-size: 12px;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
 }
 .file-tree-panel__item:hover {
   background: rgba(0, 0, 0, 0.05);
+  transform: translateX(2px);
+}
+.file-tree-panel__item--file {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.file-tree-panel__item--file:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  filter: brightness(0.98);
+}
+.file-tree-panel__item--focused {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.file-tree-panel__item--focused:hover {
+  filter: brightness(1.05);
+}
+.file-tree-panel__item--focused .file-tree-panel__toggle,
+.file-tree-panel__item--focused .file-tree-panel__icon {
+  filter: brightness(10);
 }
 .file-tree-panel__item--visible {
   background: rgba(17, 104, 189, 0.08);
@@ -901,6 +919,22 @@ svg.react-flow__connectionline {
 }
 .file-tree-panel__item--selected:hover {
   background: rgba(17, 104, 189, 0.25);
+}
+.file-tree-panel__badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #ffffff;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.file-tree-panel__count {
+  font-size: 10px;
+  color: #666666;
+  font-weight: normal;
+  margin-left: 8px;
 }
 .file-tree-panel__toggle {
   width: 14px;

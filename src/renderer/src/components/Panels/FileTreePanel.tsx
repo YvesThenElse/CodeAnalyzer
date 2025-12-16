@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useGraphStore } from '../../store/graphStore'
 import { useGraphNavigation } from '../../hooks/useGraphNavigation'
 import type { AnalyzedGraph, FileNode } from '../../types/graph.types'
-import { getDarkerColor } from '../../utils/colorUtils'
+import { getDarkerColor, getGradientBackground, getColorWithAlpha } from '../../utils/colorUtils'
 import './FileTreePanel.less'
 
 interface FileTreeNode {
@@ -166,18 +166,37 @@ function FileTreeItem({
     [node.fullPath, isDirectory, onContextMenu]
   )
 
+  // Generate background style based on file color
+  const getItemBackground = (): string | undefined => {
+    if (isFocused && node.color) {
+      return node.color
+    }
+    if (!isDirectory && node.color) {
+      return getGradientBackground(node.color, 'to right')
+    }
+    return undefined
+  }
+
   const itemStyle: React.CSSProperties = {
     paddingLeft: `${depth * 16 + 8}px`,
-    borderLeft: node.color ? `3px solid ${node.color}` : '3px solid transparent',
-    backgroundColor: isFocused ? (node.color ? `${node.color}20` : '#EFF6FF') : undefined
+    borderLeft: node.color ? `4px solid ${node.color}` : '4px solid transparent',
+    background: getItemBackground(),
+    borderRadius: !isDirectory ? '4px' : undefined,
+    margin: !isDirectory ? '2px 4px 2px 0' : undefined
   }
 
   const itemClasses = [
     'file-tree-panel__item',
-    isFocused && 'file-tree-panel__item--focused'
+    isFocused && 'file-tree-panel__item--focused',
+    !isDirectory && node.color && 'file-tree-panel__item--file'
   ]
     .filter(Boolean)
     .join(' ')
+
+  // Text color for focused items
+  const nameStyle: React.CSSProperties = isFocused && node.color
+    ? { color: '#ffffff', fontWeight: 600 }
+    : {}
 
   return (
     <>
@@ -194,7 +213,7 @@ function FileTreeItem({
         <span className="file-tree-panel__icon">
           {isDirectory ? '📁' : '📄'}
         </span>
-        <span className="file-tree-panel__name" title={node.name}>
+        <span className="file-tree-panel__name" style={nameStyle} title={node.name}>
           {node.name}
         </span>
         {isFocused && (

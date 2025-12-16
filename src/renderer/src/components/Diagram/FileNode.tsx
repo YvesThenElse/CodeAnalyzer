@@ -1,7 +1,7 @@
 import React, { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { FileNodeData } from '../../types/graph.types'
-import { getContrastingTextColor, getDarkerColor } from '../../utils/colorUtils'
+import { getContrastingTextColor, getDarkerColor, getGradientBackground, getColorWithAlpha } from '../../utils/colorUtils'
 
 type FileNodeProps = NodeProps<FileNodeData>
 
@@ -10,6 +10,10 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
 
   const borderColor = getDarkerColor(file.color, 10)
   const textColor = getContrastingTextColor(file.color)
+
+  // Generate gradient background for non-primary nodes
+  const gradientBg = getGradientBackground(file.color, 'to bottom')
+  const accentColor = getColorWithAlpha(file.color, 0.15)
 
   // Icon based on file type
   const getFileIcon = (): string => {
@@ -25,6 +29,14 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
     }
   }
 
+  // Background style based on state
+  const getBackgroundStyle = (): string => {
+    if (isPrimary) {
+      return file.color
+    }
+    return gradientBg
+  }
+
   return (
     <div
       className={`file-node ${isPrimary ? 'file-node--primary' : ''} ${isHighlighted ? 'file-node--highlighted' : ''} ${selected ? 'file-node--selected' : ''}`}
@@ -32,17 +44,19 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
         borderColor: borderColor,
         borderWidth: isPrimary ? '3px' : '2px',
         borderStyle: 'solid',
-        borderRadius: '8px',
+        borderRadius: '10px',
         padding: '12px 16px',
-        backgroundColor: isPrimary ? file.color : '#ffffff',
+        background: getBackgroundStyle(),
+        borderLeftWidth: isPrimary ? '3px' : '4px',
+        borderLeftColor: file.color,
         color: isPrimary ? textColor : '#1f2937',
         minWidth: '180px',
         maxWidth: '250px',
         boxShadow: isPrimary
-          ? '0 4px 12px rgba(0, 0, 0, 0.15)'
+          ? `0 4px 16px ${getColorWithAlpha(file.color, 0.3)}`
           : isHighlighted
-            ? '0 2px 8px rgba(0, 0, 0, 0.1)'
-            : '0 1px 3px rgba(0, 0, 0, 0.05)',
+            ? `0 3px 12px ${getColorWithAlpha(file.color, 0.2)}`
+            : `0 2px 6px ${getColorWithAlpha(file.color, 0.1)}`,
         transition: 'all 0.2s ease',
         cursor: 'pointer'
       }}

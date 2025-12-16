@@ -23823,10 +23823,29 @@ function getDarkerColor(hslColor, amount = 15) {
   const l2 = Math.max(parseInt(match[3], 10) - amount, 20);
   return `hsl(${h}, ${s}%, ${l2}%)`;
 }
+function getGradientBackground(hslColor, direction = "to right") {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return `linear-gradient(${direction}, #f8fafc, #ffffff)`;
+  const h = parseInt(match[1], 10);
+  const s = parseInt(match[2], 10);
+  const startColor = `hsl(${h}, ${Math.min(s, 40)}%, 95%)`;
+  const endColor = `hsl(${h}, ${Math.min(s, 20)}%, 99%)`;
+  return `linear-gradient(${direction}, ${startColor}, ${endColor})`;
+}
+function getColorWithAlpha(hslColor, alpha) {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return `rgba(100, 116, 139, ${alpha})`;
+  const h = parseInt(match[1], 10);
+  const s = parseInt(match[2], 10);
+  const l2 = parseInt(match[3], 10);
+  return `hsla(${h}, ${s}%, ${l2}%, ${alpha})`;
+}
 function FileNodeComponent({ data, selected: selected2 }) {
   const { file, isPrimary, isHighlighted, importCount, dependentCount } = data;
   const borderColor = getDarkerColor(file.color, 10);
   const textColor = getContrastingTextColor(file.color);
+  const gradientBg = getGradientBackground(file.color, "to bottom");
+  getColorWithAlpha(file.color, 0.15);
   const getFileIcon = () => {
     switch (file.type) {
       case "index_file":
@@ -23839,6 +23858,12 @@ function FileNodeComponent({ data, selected: selected2 }) {
         return "📄";
     }
   };
+  const getBackgroundStyle = () => {
+    if (isPrimary) {
+      return file.color;
+    }
+    return gradientBg;
+  };
   return /* @__PURE__ */ React$2.createElement(
     "div",
     {
@@ -23847,13 +23872,15 @@ function FileNodeComponent({ data, selected: selected2 }) {
         borderColor,
         borderWidth: isPrimary ? "3px" : "2px",
         borderStyle: "solid",
-        borderRadius: "8px",
+        borderRadius: "10px",
         padding: "12px 16px",
-        backgroundColor: isPrimary ? file.color : "#ffffff",
+        background: getBackgroundStyle(),
+        borderLeftWidth: isPrimary ? "3px" : "4px",
+        borderLeftColor: file.color,
         color: isPrimary ? textColor : "#1f2937",
         minWidth: "180px",
         maxWidth: "250px",
-        boxShadow: isPrimary ? "0 4px 12px rgba(0, 0, 0, 0.15)" : isHighlighted ? "0 2px 8px rgba(0, 0, 0, 0.1)" : "0 1px 3px rgba(0, 0, 0, 0.05)",
+        boxShadow: isPrimary ? `0 4px 16px ${getColorWithAlpha(file.color, 0.3)}` : isHighlighted ? `0 3px 12px ${getColorWithAlpha(file.color, 0.2)}` : `0 2px 6px ${getColorWithAlpha(file.color, 0.1)}`,
         transition: "all 0.2s ease",
         cursor: "pointer"
       }
@@ -24549,15 +24576,28 @@ function FileTreeItem({
     },
     [node.fullPath, isDirectory, onContextMenu]
   );
+  const getItemBackground = () => {
+    if (isFocused && node.color) {
+      return node.color;
+    }
+    if (!isDirectory && node.color) {
+      return getGradientBackground(node.color, "to right");
+    }
+    return void 0;
+  };
   const itemStyle = {
     paddingLeft: `${depth * 16 + 8}px`,
-    borderLeft: node.color ? `3px solid ${node.color}` : "3px solid transparent",
-    backgroundColor: isFocused ? node.color ? `${node.color}20` : "#EFF6FF" : void 0
+    borderLeft: node.color ? `4px solid ${node.color}` : "4px solid transparent",
+    background: getItemBackground(),
+    borderRadius: !isDirectory ? "4px" : void 0,
+    margin: !isDirectory ? "2px 4px 2px 0" : void 0
   };
   const itemClasses = [
     "file-tree-panel__item",
-    isFocused && "file-tree-panel__item--focused"
+    isFocused && "file-tree-panel__item--focused",
+    !isDirectory && node.color && "file-tree-panel__item--file"
   ].filter(Boolean).join(" ");
+  const nameStyle = isFocused && node.color ? { color: "#ffffff", fontWeight: 600 } : {};
   return /* @__PURE__ */ React$2.createElement(React$2.Fragment, null, /* @__PURE__ */ React$2.createElement(
     "div",
     {
@@ -24569,7 +24609,7 @@ function FileTreeItem({
     },
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__toggle" }, isDirectory ? isExpanded ? "▼" : "▶" : ""),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__icon" }, isDirectory ? "📁" : "📄"),
-    /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__name", title: node.name }, node.name),
+    /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__name", style: nameStyle, title: node.name }, node.name),
     isFocused && /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__badge" }, "principal")
   ), isDirectory && isExpanded && node.children && /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__children" }, node.children.map((child) => /* @__PURE__ */ React$2.createElement(
     FileTreeItem,
