@@ -1,51 +1,58 @@
-# ReactAnalyzer
+# CodeAnalyzer
 
-Générateur de diagrammes C4 interactifs pour projets React.
+Interactive dependency graph viewer for TypeScript/JavaScript projects.
 
 ## Description
 
-ReactAnalyzer est une application desktop qui analyse le code source d'un projet React et génère automatiquement des diagrammes C4 interactifs avec navigation par niveaux de zoom.
+CodeAnalyzer is a desktop application that analyzes source code from TypeScript/JavaScript projects and generates interactive dependency graphs with multi-level navigation.
 
-## Fonctionnalités
+## Features
 
-- **Analyse automatique** du code source React/TypeScript
-- **4 niveaux C4** : System Context, Containers, Components, Code
-- **Détection des systèmes externes** : APIs (fetch, axios), SDKs cloud (Firebase, AWS, Stripe), bases de données (Prisma, TypeORM, Mongoose)
-- **Navigation interactive** : double-clic pour explorer, breadcrumb pour naviguer
-- **Export** : PNG (image) et JSON (données structurées)
-- **Performance** : Worker Thread pour l'analyse de gros projets
+- **Automatic Analysis** - Parses TypeScript/JavaScript/JSX/TSX files using AST
+- **Two Navigation Levels**:
+  - **Files Level** - Visualize file dependencies with import relationships
+  - **Code Level** - Explore declarations inside a file (functions, classes, components, hooks, types)
+- **Path Alias Resolution** - Supports common aliases (`@/`, `@components/`, `~/`, etc.)
+- **Smart Coloring** - Files colored by folder with HSL gradients
+- **Community Detection** - Automatic grouping using Louvain algorithm
+- **File Tree Panel** - Browse project structure with quick navigation
+- **Details Panel** - View file imports, exports, and code declarations
+- **Auto-centering** - Smooth camera transitions when navigating
 
-## Stack technique
+## Tech Stack
 
-- **Electron** - Application desktop cross-platform
-- **React 18** - Interface utilisateur
-- **TypeScript** - Typage statique
-- **React Flow** - Visualisation des diagrammes
-- **Zustand** - State management
-- **@typescript-eslint/parser** - Parsing AST
-- **dagre** - Layout automatique des nodes
-- **Less** - Préprocesseur CSS
+| Technology | Purpose |
+|------------|---------|
+| [Electron](https://www.electronjs.org/) | Cross-platform desktop app |
+| [electron-vite](https://electron-vite.org/) | Build tooling with HMR |
+| [React 18](https://react.dev/) | User interface |
+| [TypeScript](https://www.typescriptlang.org/) | Type safety |
+| [@xyflow/react](https://reactflow.dev/) | Graph visualization |
+| [Zustand](https://zustand-demo.pmnd.rs/) | State management |
+| [dagre](https://github.com/dagrejs/dagre) | Automatic graph layout |
+| [@typescript-eslint/typescript-estree](https://typescript-eslint.io/) | AST parsing |
+| [Less](https://lesscss.org/) | CSS preprocessing |
 
 ## Installation
 
 ```bash
-# Cloner le repository
+# Clone the repository
 git clone <repository-url>
-cd ReactAnalyzer
+cd CodeAnalyzer
 
-# Installer les dépendances
+# Install dependencies
 npm install
 ```
 
-## Utilisation
+## Usage
 
-### Développement
+### Development
 
 ```bash
 npm run dev
 ```
 
-### Build de production
+### Production Build
 
 ```bash
 # Windows
@@ -58,7 +65,7 @@ npm run build:mac
 npm run build:linux
 ```
 
-### Preview
+### Preview Production Build
 
 ```bash
 npm run preview
@@ -68,109 +75,150 @@ npm run preview
 
 ```
 src/
-├── main/                    # Electron main process
-│   ├── index.ts             # Point d'entrée
-│   ├── ipcHandlers.ts       # Handlers IPC
-│   ├── fileAnalyzer.ts      # Scan des répertoires
-│   ├── astParser.ts         # Parsing AST
-│   ├── c4Builder.ts         # Construction modèle C4
+├── main/                        # Electron main process
+│   ├── index.ts                 # Entry point, window management
+│   ├── ipcHandlers.ts           # IPC communication handlers
+│   ├── fileAnalyzer.ts          # File system traversal
+│   ├── astParser.ts             # TypeScript/JSX AST parsing
+│   ├── graphBuilder.ts          # Dependency graph construction
+│   ├── communityDetection.ts    # Louvain clustering algorithm
 │   └── workers/
-│       └── analyzerWorker.ts
+│       └── analyzerWorker.ts    # Background analysis worker
+│
 ├── preload/
-│   └── index.ts             # API sécurisée (contextBridge)
-└── renderer/                # React app
-    └── src/
-        ├── components/
-        │   ├── Controls/    # Header, Breadcrumb, ExportMenu
-        │   └── Diagram/     # React Flow nodes et edges
-        ├── hooks/           # useC4Navigation, useExport
-        ├── store/           # Zustand store
-        ├── styles/          # Variables LESS, styles C4
-        ├── types/           # Types TypeScript
-        └── utils/           # Utilitaires (layout)
+│   └── index.ts                 # Secure IPC bridge (contextBridge)
+│
+└── renderer/src/                # React application
+    ├── App.tsx                  # Main app component
+    ├── components/
+    │   ├── Diagram/             # React Flow components
+    │   │   ├── DiagramView.tsx  # Main graph view
+    │   │   ├── FileNode.tsx     # File node component
+    │   │   ├── CodeItemNode.tsx # Code declaration node
+    │   │   └── ImportEdge.tsx   # Import relationship edge
+    │   ├── Controls/            # Header, BackButton, LoadingOverlay
+    │   └── Panels/              # FileTreePanel, NodeDetailsPanel
+    ├── store/                   # Zustand state management
+    ├── hooks/                   # Custom React hooks
+    ├── types/                   # TypeScript type definitions
+    ├── utils/                   # Utility functions
+    └── styles/                  # Less stylesheets
 ```
 
-## Niveaux C4
+## Supported File Types
 
-### Niveau 1 : System Context
-- Application principale analysée
-- Systèmes externes détectés (APIs, SDKs, bases de données)
-- Acteurs/utilisateurs (si détectables)
+| Extension | Status |
+|-----------|--------|
+| `.ts` | Supported |
+| `.tsx` | Supported |
+| `.js` | Supported |
+| `.jsx` | Supported |
 
-### Niveau 2 : Containers
-- Frontend (React SPA)
-- Backend (si dossier server/api/backend présent)
-- Electron Main Process
-- Base de données (si ORM détecté)
+## Path Alias Resolution
 
-### Niveau 3 : Components
-- Modules/features regroupés par dossier
-- Relations basées sur les imports
+CodeAnalyzer automatically resolves common path aliases:
 
-### Niveau 4 : Code
-- Fonctions exportées
-- Composants React
-- Hooks customs
+| Alias Pattern | Resolves To |
+|---------------|-------------|
+| `@/` | `src/` |
+| `@components/` | `src/components/` |
+| `@utils/`, `@hooks/`, `@stores/` | `src/<folder>/` |
+| `@renderer/`, `@main/` | `src/renderer/`, `src/main/` |
+| `~/` | `src/` |
+| `#/` | `src/` |
 
-## Couleurs C4
+## Ignored Directories
 
-| Type | Couleur |
-|------|---------|
-| Personne/Acteur | `#08427B` |
-| Système principal | `#1168BD` |
-| Système externe | `#999999` |
-| Service cloud | `#DD8400` |
-| Container | `#438DD5` |
-| Component | `#85BBF0` |
-| Code | `#FFFFFF` |
-
-## Configuration
-
-L'application mémorise automatiquement le dernier répertoire analysé.
-
-### Répertoires ignorés
+The analyzer skips these directories:
 - `node_modules`
-- `dist`
-- `build`
-- `.git`
+- `dist`, `build`, `out`
+- `.git`, `.svn`
+- `.next`, `.nuxt`
 - `coverage`
-- `.next`
 - `.cache`
 
-### Extensions analysées
-- `.ts`, `.tsx`
-- `.js`, `.jsx`
+## Keyboard Shortcuts
 
-## Détection automatique
+| Action | Shortcut |
+|--------|----------|
+| Zoom in/out | Mouse wheel |
+| Pan | Left click + drag |
+| Drill down | Double-click on node |
+| Select node | Single click |
+| Back | Back button or breadcrumb |
 
-### APIs HTTP
-- `fetch()`
-- `axios.get/post/put/delete()`
-- `ky.get/post/put/delete()`
+## Roadmap
 
-### SDKs Cloud
-- Firebase (`firebase`, `@firebase/*`)
-- AWS (`aws-sdk`, `@aws-sdk/*`)
-- Stripe (`stripe`, `@stripe/*`)
-- Supabase (`@supabase/*`)
-- Twilio, SendGrid, Pusher
+### Phase 1 - Core Improvements
+- [ ] Parse and read `tsconfig.json` / `jsconfig.json` for accurate path alias resolution
+- [ ] Support `baseUrl` and `paths` configuration
+- [ ] Improve error handling for malformed files
+- [ ] Add search/filter functionality in file tree
+- [ ] Add platform-specific binaries (Windows, macOS, Linux)
 
-### ORMs/Bases de données
-- Prisma (`@prisma/client`)
-- TypeORM (`typeorm`)
-- Mongoose (`mongoose`)
-- Sequelize (`sequelize`)
-- Drizzle (`drizzle-orm`)
+### Phase 2 - Framework Support
+- [ ] **Angular** - Support for Angular modules, components, services, and dependency injection
+- [ ] **Vue.js** - Parse `.vue` single-file components (SFC)
+- [ ] **Svelte** - Parse `.svelte` components
+- [ ] **Next.js** - Understand App Router and Pages Router conventions
+- [ ] **Nuxt** - Support Nuxt directory structure and auto-imports
 
-## Raccourcis
+### Phase 3 - Language Support
+- [ ] **Pure JavaScript** - Improve CommonJS (`require`/`module.exports`) support
+- [ ] **ES Modules** - Better handling of dynamic imports
+- [ ] **JSON imports** - Track JSON file dependencies
+- [ ] **CSS/SCSS imports** - Visualize style dependencies
 
-| Action | Raccourci |
-|--------|-----------|
-| Zoom in/out | Molette souris |
-| Pan | Clic gauche + glisser |
-| Drill down | Double-clic sur un node |
-| Sélection | Clic sur un node |
+### Phase 4 - Advanced Features
+- [ ] **Circular dependency detection** - Highlight and warn about circular imports
+- [ ] **Dead code detection** - Find unused exports
+- [ ] **Bundle impact analysis** - Estimate file sizes and import costs
+- [ ] **Git integration** - Show recently modified files, blame info
+- [ ] **Diff view** - Compare dependency graphs between commits/branches
 
-## Licence
+### Phase 5 - Export & Integration
+- [ ] **PNG/SVG export** - High-quality image export
+- [ ] **JSON export** - Structured graph data for external tools
+- [ ] **Mermaid export** - Generate Mermaid diagram syntax
+- [ ] **CI/CD integration** - CLI mode for automated analysis
+- [ ] **VS Code extension** - Integrate directly into the editor
 
-MIT
+### Phase 6 - Collaboration
+- [ ] **Project presets** - Save and share analysis configurations
+- [ ] **Annotations** - Add notes to files and relationships
+- [ ] **Report generation** - Create documentation from analysis
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Run the app in dev mode: `npm run dev`
+5. Commit your changes: `git commit -m 'Add my feature'`
+6. Push to the branch: `git push origin feature/my-feature`
+7. Open a Pull Request
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0** (GPLv3).
+
+See the [LICENSE](LICENSE) file for details.
+
+```
+CodeAnalyzer - Interactive dependency graph viewer
+Copyright (C) 2024
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+```

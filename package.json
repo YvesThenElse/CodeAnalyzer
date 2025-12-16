@@ -1,10 +1,10 @@
 {
-  "name": "react-analyzer",
+  "name": "code-analyzer",
   "version": "1.0.0",
-  "description": "C4 Diagram Generator for React projects",
+  "description": "Dependency Graph Viewer for TypeScript/React projects",
   "main": "./out/main/index.js",
   "author": "",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
