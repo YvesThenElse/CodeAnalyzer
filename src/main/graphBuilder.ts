@@ -1,17 +1,17 @@
 import * as path from 'path'
 import type { DirectoryStructure, FileAnalysisResult, DeclarationItem } from '../renderer/src/types/ast.types'
-import type {
-  AnalyzedGraph,
-  SerializedAnalyzedGraph,
-  FileNode,
-  FileNodeType,
-  CodeItem,
-  CodeItemType,
-  FileImport,
-  ImportRelation,
-  Cluster,
+import {
   ClusteringMode,
-  GraphStats
+  type AnalyzedGraph,
+  type SerializedAnalyzedGraph,
+  type FileNode,
+  type FileNodeType,
+  type CodeItem,
+  type CodeItemType,
+  type FileImport,
+  type ImportRelation,
+  type Cluster,
+  type GraphStats
 } from '../renderer/src/types/graph.types'
 import { detectCommunities } from './communityDetection'
 

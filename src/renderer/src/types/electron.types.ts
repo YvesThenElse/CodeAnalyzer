@@ -1,4 +1,4 @@
-import type { AnalyzedProject } from './c4.types'
+import type { SerializedAnalyzedGraph } from './graph.types'
 
 // ===== API EXPOSED TO RENDERER =====
 
@@ -8,7 +8,7 @@ export interface ElectronAPI {
   getLastDirectory: () => Promise<string | null>
 
   // Analysis
-  analyzeProject: (dirPath: string) => Promise<AnalyzedProject | null>
+  analyzeProject: (dirPath: string) => Promise<SerializedAnalyzedGraph | null>
   cancelAnalysis: () => Promise<void>
 
   // Progress callbacks

@@ -22999,7 +22999,7 @@ function calculateLayout(nodes, edges, direction = "TB") {
     };
   });
 }
-function deserializeGraph$1(serialized) {
+function deserializeGraph(serialized) {
   return {
     rootPath: serialized.rootPath,
     name: serialized.name,
@@ -23029,7 +23029,7 @@ const useGraphStore = create((set2, get2) => ({
   highlightedFileIds: /* @__PURE__ */ new Set(),
   // Actions
   setGraph: (serialized) => {
-    const graph2 = deserializeGraph$1(serialized);
+    const graph2 = deserializeGraph(serialized);
     const firstFileId = graph2.files.size > 0 ? Array.from(graph2.files.keys())[0] : null;
     set2({
       graph: graph2,
@@ -23257,21 +23257,6 @@ function getCodeNodesAndEdges(graph2, selectedFileId) {
   const layoutedNodes = calculateLayout(nodes, edges);
   return { nodes: layoutedNodes, edges };
 }
-function deserializeGraph(serialized) {
-  return {
-    rootPath: serialized.rootPath,
-    name: serialized.name,
-    analyzedAt: new Date(serialized.analyzedAt),
-    files: new Map(serialized.files),
-    relations: serialized.relations,
-    clusters: {
-      [ClusteringMode.FOLDER]: serialized.clusters.folder,
-      [ClusteringMode.COMMUNITY]: serialized.clusters.community
-    },
-    rootFolders: serialized.rootFolders,
-    stats: serialized.stats
-  };
-}
 function Header() {
   const { graph: graph2, isLoading, setLoading, setGraph, setError, setProgress, reset } = useGraphStore();
   const handleSelectDirectory = reactExports.useCallback(async () => {
@@ -23292,8 +23277,7 @@ function Header() {
       try {
         const result = await window.electronAPI.analyzeProject(dirPath);
         if (result) {
-          const deserializedGraph = deserializeGraph(result);
-          setGraph(deserializedGraph);
+          setGraph(result);
         }
       } finally {
         unsubProgress();
@@ -23320,8 +23304,7 @@ function Header() {
     try {
       const result = await window.electronAPI.analyzeProject(graph2.rootPath);
       if (result) {
-        const deserializedGraph = deserializeGraph(result);
-        setGraph(deserializedGraph);
+        setGraph(result);
       }
     } finally {
       unsubProgress();

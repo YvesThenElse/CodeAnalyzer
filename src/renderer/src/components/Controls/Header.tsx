@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react'
 import { useGraphStore } from '../../store/graphStore'
-import { deserializeGraph } from '../../utils/graphUtils'
 
 export function Header(): JSX.Element {
   const { graph, isLoading, setLoading, setGraph, setError, setProgress, reset } = useGraphStore()
@@ -30,9 +29,8 @@ export function Header(): JSX.Element {
       try {
         const result = await window.electronAPI.analyzeProject(dirPath)
         if (result) {
-          // Deserialize the graph (convert files array back to Map)
-          const deserializedGraph = deserializeGraph(result)
-          setGraph(deserializedGraph)
+          // Pass serialized graph to store - store will deserialize it
+          setGraph(result)
         }
       } finally {
         unsubProgress()
@@ -64,8 +62,8 @@ export function Header(): JSX.Element {
     try {
       const result = await window.electronAPI.analyzeProject(graph.rootPath)
       if (result) {
-        const deserializedGraph = deserializeGraph(result)
-        setGraph(deserializedGraph)
+        // Pass serialized graph to store - store will deserialize it
+        setGraph(result)
       }
     } finally {
       unsubProgress()
