@@ -75,21 +75,46 @@ interface GraphState {
 }
 
 /**
- * Deserialize graph from IPC transfer
+ * Deserialize graph from IPC transfer with defensive checks
  */
 function deserializeGraph(serialized: SerializedAnalyzedGraph): AnalyzedGraph {
+  // Defensive checks for malformed data
+  if (!serialized) {
+    throw new Error('No graph data received from analysis')
+  }
+
+  if (!serialized.files || !Array.isArray(serialized.files)) {
+    throw new Error('Invalid graph data: files is missing or not an array')
+  }
+
+  // Safely create the files Map, filtering out any invalid entries
+  const validFiles: [string, FileNode][] = serialized.files.filter(
+    (entry): entry is [string, FileNode] =>
+      Array.isArray(entry) &&
+      entry.length === 2 &&
+      typeof entry[0] === 'string' &&
+      entry[1] !== null &&
+      typeof entry[1] === 'object'
+  )
+
   return {
-    rootPath: serialized.rootPath,
-    name: serialized.name,
-    analyzedAt: new Date(serialized.analyzedAt),
-    files: new Map(serialized.files),
-    relations: serialized.relations,
+    rootPath: serialized.rootPath || '',
+    name: serialized.name || 'Unknown Project',
+    analyzedAt: serialized.analyzedAt ? new Date(serialized.analyzedAt) : new Date(),
+    files: new Map(validFiles),
+    relations: Array.isArray(serialized.relations) ? serialized.relations : [],
     clusters: {
-      [ClusteringMode.FOLDER]: serialized.clusters.folder,
-      [ClusteringMode.COMMUNITY]: serialized.clusters.community
+      [ClusteringMode.FOLDER]: serialized.clusters?.folder || [],
+      [ClusteringMode.COMMUNITY]: serialized.clusters?.community || []
     },
-    rootFolders: serialized.rootFolders,
-    stats: serialized.stats
+    rootFolders: Array.isArray(serialized.rootFolders) ? serialized.rootFolders : [],
+    stats: serialized.stats || {
+      totalFiles: validFiles.length,
+      totalCodeItems: 0,
+      totalImports: 0,
+      averageImportsPerFile: 0,
+      mostConnectedFiles: []
+    }
   }
 }
 
@@ -109,15 +134,24 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   // Actions
   setGraph: (serialized) => {
-    const graph = deserializeGraph(serialized)
-    // Auto-focus on first file if any
-    const firstFileId = graph.files.size > 0 ? Array.from(graph.files.keys())[0] : null
-    set({
-      graph,
-      error: null,
-      focusedFileId: firstFileId,
-      currentLevel: GraphLevel.FILES
-    })
+    try {
+      const graph = deserializeGraph(serialized)
+      // Auto-focus on first file if any
+      const firstFileId = graph.files.size > 0 ? Array.from(graph.files.keys())[0] : null
+      set({
+        graph,
+        error: null,
+        focusedFileId: firstFileId,
+        currentLevel: GraphLevel.FILES
+      })
+    } catch (error) {
+      console.error('Failed to deserialize graph:', error)
+      set({
+        graph: null,
+        error: `Failed to process analysis results: ${(error as Error).message}`,
+        isLoading: false
+      })
+    }
   },
 
   setLoading: (isLoading) => set({ isLoading }),

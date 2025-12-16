@@ -90,14 +90,15 @@ function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.
   // Find files that import this file
   const importedBy = graph
     ? Array.from(graph.files.values()).filter((f) =>
-        f.imports.some((imp) => imp.resolvedFileId === file.id)
+        f.imports.some((imp) => imp.targetFileId && imp.targetFileId === file.id)
       )
     : []
 
-  // Get imported files
+  // Get imported files - filter out invalid targetFileIds and undefined results
   const importsFiles = file.imports
-    .map((imp) => (graph ? graph.files.get(imp.resolvedFileId) : null))
-    .filter((f): f is FileNode => f !== null)
+    .filter((imp) => imp.targetFileId && imp.targetFileId.length > 0)
+    .map((imp) => (graph ? graph.files.get(imp.targetFileId) : undefined))
+    .filter((f): f is FileNode => f !== undefined && f !== null)
 
   return (
     <aside className="node-details-panel">
@@ -183,9 +184,9 @@ function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.
               Imports externes ({file.externalImports.length})
             </h3>
             <ul className="node-details-panel__list">
-              {file.externalImports.slice(0, 10).map((ext) => (
-                <li key={ext.source} className="node-details-panel__list-item">
-                  <code className="node-details-panel__external-import">{ext.source}</code>
+              {file.externalImports.slice(0, 10).map((extImport, index) => (
+                <li key={`${extImport}-${index}`} className="node-details-panel__list-item">
+                  <code className="node-details-panel__external-import">{extImport}</code>
                 </li>
               ))}
               {file.externalImports.length > 10 && (

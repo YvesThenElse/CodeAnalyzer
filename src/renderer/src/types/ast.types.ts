@@ -82,10 +82,15 @@ export interface ApiCallInfo {
 
 // ===== ERRORS =====
 
+export type ParseErrorType = 'read' | 'encoding' | 'syntax' | 'traversal' | 'unknown'
+
 export interface ParseError {
+  type?: ParseErrorType
   file: string
   line: number
+  column?: number
   message: string
+  details?: string
 }
 
 // ===== DIRECTORY STRUCTURE =====

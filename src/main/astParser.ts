@@ -34,11 +34,79 @@ const CLOUD_SDK_PATTERNS: Record<string, { name: string; type: 'cloud_service' |
 }
 
 /**
+ * Parse error with detailed information
+ */
+interface ParseErrorInfo {
+  type: 'read' | 'encoding' | 'syntax' | 'traversal' | 'unknown'
+  file: string
+  line: number
+  column?: number
+  message: string
+  details?: string
+}
+
+/**
+ * Create an empty result with error
+ */
+function createEmptyResultWithError(filePath: string, error: ParseErrorInfo): FileAnalysisResult {
+  return {
+    filePath,
+    exports: [],
+    imports: [],
+    components: [],
+    hooks: [],
+    apiCalls: [],
+    allDeclarations: [],
+    errors: [error]
+  }
+}
+
+/**
+ * Extract line and column from parser error message
+ */
+function extractLocationFromError(error: Error): { line: number; column?: number } {
+  // Try to extract line/column from error message (format: "line X, column Y" or "(X:Y)")
+  const lineColMatch = error.message.match(/line\s+(\d+)/i)
+  const parenMatch = error.message.match(/\((\d+):(\d+)\)/)
+
+  if (parenMatch) {
+    return { line: parseInt(parenMatch[1], 10), column: parseInt(parenMatch[2], 10) }
+  }
+  if (lineColMatch) {
+    const colMatch = error.message.match(/column\s+(\d+)/i)
+    return {
+      line: parseInt(lineColMatch[1], 10),
+      column: colMatch ? parseInt(colMatch[1], 10) : undefined
+    }
+  }
+
+  // Check for lineNumber property on error object
+  if ('lineNumber' in error && typeof error.lineNumber === 'number') {
+    return {
+      line: error.lineNumber,
+      column: 'column' in error && typeof error.column === 'number' ? error.column : undefined
+    }
+  }
+
+  return { line: 0 }
+}
+
+/**
+ * Sanitize error message for display
+ */
+function sanitizeErrorMessage(message: string): string {
+  // Remove file paths from error message to make it cleaner
+  return message
+    .replace(/at\s+.*:\d+:\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) // Limit message length
+}
+
+/**
  * Parse a single file and extract analysis information
  */
 export async function parseFile(filePath: string): Promise<FileAnalysisResult> {
-  const code = await fs.readFile(filePath, 'utf-8')
-
   const result: FileAnalysisResult = {
     filePath,
     exports: [],
@@ -50,26 +118,108 @@ export async function parseFile(filePath: string): Promise<FileAnalysisResult> {
     errors: []
   }
 
+  // Step 1: Read file with error handling
+  let code: string
   try {
-    const ast = parse(code, {
+    code = await fs.readFile(filePath, 'utf-8')
+  } catch (readError) {
+    const err = readError as NodeJS.ErrnoException
+    let errorType: ParseErrorInfo['type'] = 'read'
+    let message = 'Failed to read file'
+
+    if (err.code === 'ENOENT') {
+      message = 'File not found'
+    } else if (err.code === 'EACCES') {
+      message = 'Permission denied'
+    } else if (err.code === 'EISDIR') {
+      message = 'Path is a directory, not a file'
+    } else if (err.code === 'EMFILE' || err.code === 'ENFILE') {
+      message = 'Too many open files'
+    } else if (err.message) {
+      message = sanitizeErrorMessage(err.message)
+    }
+
+    return createEmptyResultWithError(filePath, {
+      type: errorType,
+      file: filePath,
+      line: 0,
+      message,
+      details: err.code
+    })
+  }
+
+  // Step 2: Check for encoding issues (null bytes, binary content)
+  if (code.includes('\0')) {
+    return createEmptyResultWithError(filePath, {
+      type: 'encoding',
+      file: filePath,
+      line: 0,
+      message: 'File appears to be binary or has invalid encoding'
+    })
+  }
+
+  // Step 3: Parse AST with detailed error handling
+  let ast: ReturnType<typeof parse>
+  try {
+    ast = parse(code, {
       jsx: true,
       loc: true,
       range: true,
       errorOnUnknownASTType: false,
       errorOnTypeScriptSyntacticAndSemanticIssues: false
     })
+  } catch (parseError) {
+    const err = parseError as Error
+    const location = extractLocationFromError(err)
 
-    // Traverse AST
-    traverseAST(ast, result)
+    // Try to provide context about where the error occurred
+    let contextLine = ''
+    if (location.line > 0) {
+      const lines = code.split('\n')
+      if (location.line <= lines.length) {
+        contextLine = lines[location.line - 1]?.trim().slice(0, 50)
+      }
+    }
 
-    // Post-process: identify React components and hooks
-    identifyReactElements(result)
-  } catch (error) {
     result.errors?.push({
+      type: 'syntax',
+      file: filePath,
+      line: location.line,
+      column: location.column,
+      message: sanitizeErrorMessage(err.message),
+      details: contextLine ? `Near: "${contextLine}"` : undefined
+    } as any)
+
+    // Return partial result - file was read but couldn't be parsed
+    return result
+  }
+
+  // Step 4: Traverse AST with error handling
+  try {
+    traverseAST(ast, result)
+  } catch (traverseError) {
+    const err = traverseError as Error
+    result.errors?.push({
+      type: 'traversal',
       file: filePath,
       line: 0,
-      message: (error as Error).message
-    })
+      message: `AST traversal error: ${sanitizeErrorMessage(err.message)}`
+    } as any)
+    // Continue - we may have partial results
+  }
+
+  // Step 5: Post-process with error handling
+  try {
+    identifyReactElements(result)
+  } catch (postProcessError) {
+    const err = postProcessError as Error
+    result.errors?.push({
+      type: 'unknown',
+      file: filePath,
+      line: 0,
+      message: `Post-processing error: ${sanitizeErrorMessage(err.message)}`
+    } as any)
+    // Continue - we have partial results
   }
 
   return result
