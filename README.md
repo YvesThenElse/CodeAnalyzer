@@ -151,13 +151,22 @@ The analyzer skips these directories:
 
 ## Roadmap
 
+### Phase 0 - AI Improvements
+- [ ] Worker for generating description for each file (provide file + imports + used) 
+- [ ] Worker for generating methods description
+- [ ] LLM API key configuration
+- [ ] Context menu - Open file in editor (external?)
+- [ ] Context menu - Display code logic
+
 ### Phase 1 - Core Improvements
 - [ ] Parse and read `tsconfig.json` / `jsconfig.json` for accurate path alias resolution
 - [ ] Support `baseUrl` and `paths` configuration
 - [ ] Improve error handling for malformed files
 - [ ] Add search/filter functionality in file tree
-- [ ] Add platform-specific binaries (Windows, macOS, Linux)
 - [ ] Improve code level display
+- [ ] Display methods logic into specific graph (schema logic function)
+- [ ] Code review (...)
+- [ ] Generate unit tests
 
 ### Phase 2 - Framework Support
 - [ ] **Angular** - Support for Angular modules, components, services, and dependency injection
@@ -165,12 +174,17 @@ The analyzer skips these directories:
 - [ ] **Svelte** - Parse `.svelte` components
 - [ ] **Next.js** - Understand App Router and Pages Router conventions
 - [ ] **Nuxt** - Support Nuxt directory structure and auto-imports
+- [ ] Others...
 
 ### Phase 3 - Language Support
 - [ ] **Pure JavaScript** - Improve CommonJS (`require`/`module.exports`) support
 - [ ] **ES Modules** - Better handling of dynamic imports
 - [ ] **JSON imports** - Track JSON file dependencies
 - [ ] **CSS/SCSS imports** - Visualize style dependencies
+Long term goal : 
+- [ ] Have an abstraction over languages (display just logic, no code specific information)
+- [ ] By extension, beeing able to handle more languages
+
 
 ### Phase 4 - Advanced Features
 - [ ] **Circular dependency detection** - Highlight and warn about circular imports
@@ -178,18 +192,22 @@ The analyzer skips these directories:
 - [ ] **Bundle impact analysis** - Estimate file sizes and import costs
 - [ ] **Git integration** - Show recently modified files, blame info
 - [ ] **Diff view** - Compare dependency graphs between commits/branches
+- [ ] Design pattern identification
+- [ ] 
 
 ### Phase 5 - Export & Integration
 - [ ] **PNG/SVG export** - High-quality image export
 - [ ] **JSON export** - Structured graph data for external tools
 - [ ] **Mermaid export** - Generate Mermaid diagram syntax
-- [ ] **CI/CD integration** - CLI mode for automated analysis
-- [ ] **VS Code extension** - Integrate directly into the editor
 
 ### Phase 6 - Collaboration
 - [ ] **Project presets** - Save and share analysis configurations
 - [ ] **Annotations** - Add notes to files and relationships
 - [ ] **Report generation** - Create documentation from analysis
+
+### Phase 7 - Subproject extraction
+- [ ] Extract project files (checkbox?) and generate a working sub-project aside based on graph logic
+
 
 ## Contributing
 
@@ -213,7 +231,7 @@ See the [LICENSE](LICENSE) file for details.
 
 ```
 CodeAnalyzer - Interactive dependency graph viewer
-Copyright (C) 2024
+Copyright (C) 2025
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
