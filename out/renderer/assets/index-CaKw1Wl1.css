@@ -989,12 +989,25 @@ svg.react-flow__connectionline {
 .file-tree-panel__badge {
   font-size: 9px;
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  color: #ffffff;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.file-tree-panel__badge--primary {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+.file-tree-panel__badge--import {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.file-tree-panel__badge--usedby {
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 .file-tree-panel__count {
   font-size: 10px;

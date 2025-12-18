@@ -23539,6 +23539,27 @@ const useGraphStore = create((set2, get2) => ({
   getFolderColor: (folderPath) => {
     const { folderColors } = get2();
     return folderColors.get(folderPath);
+  },
+  getVisibleFilesInfo: () => {
+    const { graph: graph2, focusedFileId, currentLevel } = get2();
+    const visibleFiles = /* @__PURE__ */ new Map();
+    if (!graph2 || !focusedFileId || currentLevel !== GraphLevel.FILES) {
+      return visibleFiles;
+    }
+    visibleFiles.set(focusedFileId, "primary");
+    for (const rel of graph2.relations) {
+      if (rel.sourceFileId === focusedFileId) {
+        if (!visibleFiles.has(rel.targetFileId)) {
+          visibleFiles.set(rel.targetFileId, "import");
+        }
+      }
+      if (rel.targetFileId === focusedFileId) {
+        if (!visibleFiles.has(rel.sourceFileId)) {
+          visibleFiles.set(rel.sourceFileId, "usedBy");
+        }
+      }
+    }
+    return visibleFiles;
   }
 }));
 function getFileNodesAndEdges(graph2, focusedFileId, highlightedFileIds) {
@@ -24859,6 +24880,7 @@ function FileTreeItem({
   depth,
   expandedPaths,
   focusedFileId,
+  visibleFilesInfo,
   onToggle,
   onFileClick,
   onFileDoubleClick,
@@ -24867,6 +24889,7 @@ function FileTreeItem({
   const isExpanded = expandedPaths.has(node.path);
   const isDirectory = node.type === "directory";
   const isFocused = node.fileId === focusedFileId;
+  const fileRelation = node.fileId ? visibleFilesInfo.get(node.fileId) : void 0;
   const handleClick = reactExports.useCallback(() => {
     if (isDirectory) {
       onToggle(node.path);
@@ -24951,7 +24974,9 @@ function FileTreeItem({
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__toggle" }, isDirectory ? isExpanded ? "▼" : "▶" : ""),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__icon" }, isDirectory ? "📁" : "📄"),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__name", style: nameStyle, title: node.name }, node.name),
-    isFocused && /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__badge" }, "principal")
+    fileRelation === "primary" && /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__badge file-tree-panel__badge--primary" }, "principal"),
+    fileRelation === "import" && /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__badge file-tree-panel__badge--import" }, "import"),
+    fileRelation === "usedBy" && /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__badge file-tree-panel__badge--usedby" }, "used by")
   ), isDirectory && isExpanded && node.children && /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__children" }, node.children.map((child) => /* @__PURE__ */ React$2.createElement(
     FileTreeItem,
     {
@@ -24960,6 +24985,7 @@ function FileTreeItem({
       depth: depth + 1,
       expandedPaths,
       focusedFileId,
+      visibleFilesInfo,
       onToggle,
       onFileClick,
       onFileDoubleClick,
@@ -24969,7 +24995,9 @@ function FileTreeItem({
 }
 function FileTreePanel() {
   const { graph: graph2, focusedFileId, folderColors } = useGraphStore();
+  const getVisibleFilesInfo = useGraphStore((state) => state.getVisibleFilesInfo);
   const { focusOnFile } = useGraphNavigation();
+  const visibleFilesInfo = reactExports.useMemo(() => getVisibleFilesInfo(), [getVisibleFilesInfo, focusedFileId]);
   const [expandedPaths, setExpandedPaths] = reactExports.useState(/* @__PURE__ */ new Set([""]));
   const [contextMenu, setContextMenu] = reactExports.useState(null);
   const [panelWidth, setPanelWidth] = reactExports.useState(() => {
@@ -25007,24 +25035,26 @@ function FileTreePanel() {
   }, [isResizing]);
   const fileTree = reactExports.useMemo(() => buildFileTree(graph2, folderColors), [graph2, folderColors]);
   reactExports.useEffect(() => {
-    if (focusedFileId && graph2) {
-      const file = graph2.files.get(focusedFileId);
-      if (file) {
-        const parents = getParentPaths(file.relativePath);
-        const newExpanded = new Set(expandedPaths);
-        let hasNew = false;
-        parents.forEach((p2) => {
-          if (!newExpanded.has(p2)) {
-            newExpanded.add(p2);
-            hasNew = true;
-          }
-        });
-        if (hasNew) {
-          setExpandedPaths(newExpanded);
+    if (graph2 && visibleFilesInfo.size > 0) {
+      const newExpanded = new Set(expandedPaths);
+      let hasNew = false;
+      for (const fileId of visibleFilesInfo.keys()) {
+        const file = graph2.files.get(fileId);
+        if (file) {
+          const parents = getParentPaths(file.relativePath);
+          parents.forEach((p2) => {
+            if (!newExpanded.has(p2)) {
+              newExpanded.add(p2);
+              hasNew = true;
+            }
+          });
         }
       }
+      if (hasNew) {
+        setExpandedPaths(newExpanded);
+      }
     }
-  }, [focusedFileId, graph2]);
+  }, [focusedFileId, graph2, visibleFilesInfo]);
   reactExports.useEffect(() => {
     const handleClick = () => setContextMenu(null);
     if (contextMenu) {
@@ -25117,6 +25147,7 @@ function FileTreePanel() {
         depth: 0,
         expandedPaths,
         focusedFileId,
+        visibleFilesInfo,
         onToggle: handleToggle,
         onFileClick: handleFileClick,
         onFileDoubleClick: handleFileDoubleClick,

@@ -111,6 +111,7 @@ interface GraphState {
   getAllFilePaths: () => Set<string>
   getFocusedFilePath: () => string | null
   getFolderColor: (folderPath: string) => string | undefined
+  getVisibleFilesInfo: () => Map<string, 'primary' | 'import' | 'usedBy'>
 }
 
 /**
@@ -443,6 +444,36 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   getFolderColor: (folderPath: string) => {
     const { folderColors } = get()
     return folderColors.get(folderPath)
+  },
+
+  getVisibleFilesInfo: () => {
+    const { graph, focusedFileId, currentLevel } = get()
+    const visibleFiles = new Map<string, 'primary' | 'import' | 'usedBy'>()
+
+    if (!graph || !focusedFileId || currentLevel !== GraphLevel.FILES) {
+      return visibleFiles
+    }
+
+    // Primary file
+    visibleFiles.set(focusedFileId, 'primary')
+
+    // Find related files
+    for (const rel of graph.relations) {
+      if (rel.sourceFileId === focusedFileId) {
+        // Files that the focused file imports
+        if (!visibleFiles.has(rel.targetFileId)) {
+          visibleFiles.set(rel.targetFileId, 'import')
+        }
+      }
+      if (rel.targetFileId === focusedFileId) {
+        // Files that import the focused file (used by)
+        if (!visibleFiles.has(rel.sourceFileId)) {
+          visibleFiles.set(rel.sourceFileId, 'usedBy')
+        }
+      }
+    }
+
+    return visibleFiles
   }
 }))
 

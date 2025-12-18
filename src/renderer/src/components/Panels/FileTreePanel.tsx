@@ -165,6 +165,7 @@ interface FileTreeItemProps {
   depth: number
   expandedPaths: Set<string>
   focusedFileId: string | null
+  visibleFilesInfo: Map<string, 'primary' | 'import' | 'usedBy'>
   onToggle: (path: string) => void
   onFileClick: (fileId: string) => void
   onFileDoubleClick: (fullPath: string) => void
@@ -176,6 +177,7 @@ function FileTreeItem({
   depth,
   expandedPaths,
   focusedFileId,
+  visibleFilesInfo,
   onToggle,
   onFileClick,
   onFileDoubleClick,
@@ -184,6 +186,7 @@ function FileTreeItem({
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
   const isFocused = node.fileId === focusedFileId
+  const fileRelation = node.fileId ? visibleFilesInfo.get(node.fileId) : undefined
 
   const handleClick = useCallback(() => {
     if (isDirectory) {
@@ -293,8 +296,14 @@ function FileTreeItem({
         <span className="file-tree-panel__name" style={nameStyle} title={node.name}>
           {node.name}
         </span>
-        {isFocused && (
-          <span className="file-tree-panel__badge">principal</span>
+        {fileRelation === 'primary' && (
+          <span className="file-tree-panel__badge file-tree-panel__badge--primary">principal</span>
+        )}
+        {fileRelation === 'import' && (
+          <span className="file-tree-panel__badge file-tree-panel__badge--import">import</span>
+        )}
+        {fileRelation === 'usedBy' && (
+          <span className="file-tree-panel__badge file-tree-panel__badge--usedby">used by</span>
         )}
       </div>
       {isDirectory && isExpanded && node.children && (
@@ -306,6 +315,7 @@ function FileTreeItem({
               depth={depth + 1}
               expandedPaths={expandedPaths}
               focusedFileId={focusedFileId}
+              visibleFilesInfo={visibleFilesInfo}
               onToggle={onToggle}
               onFileClick={onFileClick}
               onFileDoubleClick={onFileDoubleClick}
@@ -320,7 +330,11 @@ function FileTreeItem({
 
 export function FileTreePanel(): JSX.Element | null {
   const { graph, focusedFileId, folderColors } = useGraphStore()
+  const getVisibleFilesInfo = useGraphStore((state) => state.getVisibleFilesInfo)
   const { focusOnFile } = useGraphNavigation()
+
+  // Get visible files info (primary, import, usedBy)
+  const visibleFilesInfo = useMemo(() => getVisibleFilesInfo(), [getVisibleFilesInfo, focusedFileId])
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['']))
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
@@ -370,28 +384,30 @@ export function FileTreePanel(): JSX.Element | null {
 
   const fileTree = useMemo(() => buildFileTree(graph, folderColors), [graph, folderColors])
 
-  // Auto-expand to show focused file
+  // Auto-expand to show all visible files (focused + imports + usedBy)
   useEffect(() => {
-    if (focusedFileId && graph) {
-      const file = graph.files.get(focusedFileId)
-      if (file) {
-        const parents = getParentPaths(file.relativePath)
-        const newExpanded = new Set(expandedPaths)
-        let hasNew = false
+    if (graph && visibleFilesInfo.size > 0) {
+      const newExpanded = new Set(expandedPaths)
+      let hasNew = false
 
-        parents.forEach((p) => {
-          if (!newExpanded.has(p)) {
-            newExpanded.add(p)
-            hasNew = true
-          }
-        })
-
-        if (hasNew) {
-          setExpandedPaths(newExpanded)
+      for (const fileId of visibleFilesInfo.keys()) {
+        const file = graph.files.get(fileId)
+        if (file) {
+          const parents = getParentPaths(file.relativePath)
+          parents.forEach((p) => {
+            if (!newExpanded.has(p)) {
+              newExpanded.add(p)
+              hasNew = true
+            }
+          })
         }
       }
+
+      if (hasNew) {
+        setExpandedPaths(newExpanded)
+      }
     }
-  }, [focusedFileId, graph])
+  }, [focusedFileId, graph, visibleFilesInfo])
 
   useEffect(() => {
     const handleClick = (): void => setContextMenu(null)
@@ -496,6 +512,7 @@ export function FileTreePanel(): JSX.Element | null {
           depth={0}
           expandedPaths={expandedPaths}
           focusedFileId={focusedFileId}
+          visibleFilesInfo={visibleFilesInfo}
           onToggle={handleToggle}
           onFileClick={handleFileClick}
           onFileDoubleClick={handleFileDoubleClick}
