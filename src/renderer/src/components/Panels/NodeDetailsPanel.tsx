@@ -132,6 +132,7 @@ interface FileDetailsPanelProps {
 }
 
 function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.Element {
+  const description = useGraphStore((state) => state.descriptions[file.relativePath])
   const headerColor = file.color || '#64748b'
   const textColor = '#ffffff'
 
@@ -198,6 +199,25 @@ function FileDetailsPanel({ file, graph, onClose }: FileDetailsPanelProps): JSX.
           <h3 className="node-details-panel__section-title">Type</h3>
           <p className="node-details-panel__value">{file.type}</p>
         </section>
+
+        {/* AI Description */}
+        {description?.long && (
+          <section className="node-details-panel__section">
+            <h3 className="node-details-panel__section-title">
+              Description (IA)
+            </h3>
+            <p
+              className="node-details-panel__description"
+              style={{
+                whiteSpace: 'pre-wrap',
+                lineHeight: '1.5',
+                fontSize: '13px'
+              }}
+            >
+              {description.long}
+            </p>
+          </section>
+        )}
 
         {/* Community */}
         {file.communityId && (

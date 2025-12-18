@@ -25,6 +25,45 @@
   &__spacer {
     flex: 1;
   }
+
+  &__info {
+    display: flex;
+    align-items: center;
+    gap: @spacing-md;
+    margin-left: auto;
+    font-size: @font-size-sm;
+  }
+
+  &__project-name {
+    font-weight: @font-weight-medium;
+  }
+
+  &__file-count {
+    opacity: 0.7;
+  }
+
+  &__llm-progress {
+    display: flex;
+    align-items: center;
+    gap: @spacing-sm;
+    margin-left: @spacing-md;
+    padding: @spacing-xs @spacing-sm;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    font-size: @font-size-sm;
+  }
+
+  &__llm-progress-text {
+    font-weight: @font-weight-medium;
+  }
+
+  &__llm-progress-file {
+    opacity: 0.7;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 // ===== BUTTONS =====
@@ -86,11 +125,23 @@
   // Icon only
   &--icon {
     padding: @spacing-sm;
+    background: rgba(255, 255, 255, 0.1);
+    color: @text-light;
+
+    &:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.2);
+    }
 
     svg {
       width: 18px;
       height: 18px;
     }
+  }
+
+  // Small variant
+  &--small {
+    padding: @spacing-xs @spacing-sm;
+    font-size: @font-size-sm;
   }
 }
 
@@ -309,4 +360,126 @@
     margin-bottom: @spacing-lg;
     max-width: 400px;
   }
+}
+
+// ===== MODAL =====
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: @z-modal;
+}
+
+.modal {
+  background: @bg-secondary;
+  border-radius: 12px;
+  box-shadow: @shadow-lg;
+  min-width: 400px;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: @spacing-md @spacing-lg;
+    border-bottom: 1px solid @border-color;
+
+    h2 {
+      margin: 0;
+      font-size: @font-size-lg;
+      font-weight: @font-weight-bold;
+    }
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: @text-muted;
+    padding: 0;
+    line-height: 1;
+
+    &:hover {
+      color: @text-dark;
+    }
+  }
+
+  &__content {
+    padding: @spacing-lg;
+    overflow-y: auto;
+    max-height: calc(90vh - 140px);
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: @spacing-sm;
+    padding: @spacing-md @spacing-lg;
+    border-top: 1px solid @border-color;
+  }
+}
+
+// ===== FORM ELEMENTS =====
+.form-group {
+  margin-bottom: @spacing-md;
+
+  label {
+    display: block;
+    margin-bottom: @spacing-xs;
+    font-size: @font-size-sm;
+    font-weight: @font-weight-medium;
+    color: @text-dark;
+  }
+
+  select,
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    padding: @spacing-sm @spacing-md;
+    border: 1px solid @border-color;
+    border-radius: 6px;
+    font-size: @font-size-md;
+    font-family: @font-family;
+    background: @bg-secondary;
+    color: @text-dark;
+
+    &:focus {
+      outline: none;
+      border-color: @accent-color;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+  }
+
+  &--actions {
+    display: flex;
+    align-items: center;
+    gap: @spacing-md;
+  }
+}
+
+.test-status {
+  font-size: @font-size-sm;
+
+  &--success {
+    color: @success-color;
+  }
+
+  &--error {
+    color: @danger-color;
+  }
+}
+
+// ===== LLM CONFIG MODAL =====
+.llm-config-modal {
+  min-width: 450px;
 }

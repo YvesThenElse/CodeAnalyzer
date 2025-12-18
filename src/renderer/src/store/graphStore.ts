@@ -30,7 +30,7 @@ import {
   type ImportRelation,
   type Cluster
 } from '../types/graph.types'
-import type { AnalysisProgress } from '../types/electron.types'
+import type { AnalysisProgress, LLMConfig, LLMProgress, FileDescription } from '../types/electron.types'
 import { calculateLayout } from '../utils/layoutUtils'
 
 // Define types for our custom nodes
@@ -58,6 +58,12 @@ interface GraphState {
   selectedNodeId: string | null
   highlightedFileIds: Set<string>
 
+  // LLM State
+  llmConfig: LLMConfig | null
+  descriptions: Record<string, FileDescription>
+  llmLoading: boolean
+  llmProgress: LLMProgress | null
+
   // Actions
   setGraph: (graph: SerializedAnalyzedGraph) => void
   setLoading: (loading: boolean) => void
@@ -80,6 +86,13 @@ interface GraphState {
 
   // Reset
   reset: () => void
+
+  // LLM Actions
+  setLLMConfig: (config: LLMConfig | null) => void
+  setDescriptions: (descriptions: Record<string, FileDescription>) => void
+  setLLMLoading: (loading: boolean) => void
+  setLLMProgress: (progress: LLMProgress | null) => void
+  getFileDescription: (fileId: string) => FileDescription | null
 
   // Selectors
   getVisibleNodesAndEdges: () => { nodes: GraphNode[]; edges: Edge[] }
@@ -149,6 +162,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   showClusters: true,
   selectedNodeId: null,
   highlightedFileIds: new Set(),
+  llmConfig: null,
+  descriptions: {},
+  llmLoading: false,
+  llmProgress: null,
 
   // Actions
   setGraph: (serialized) => {
@@ -253,8 +270,23 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       clusteringMode: ClusteringMode.FOLDER,
       showClusters: true,
       selectedNodeId: null,
-      highlightedFileIds: new Set()
+      highlightedFileIds: new Set(),
+      llmConfig: null,
+      descriptions: {},
+      llmLoading: false,
+      llmProgress: null
     }),
+
+  // LLM Actions
+  setLLMConfig: (config) => set({ llmConfig: config }),
+  setDescriptions: (descriptions) => set({ descriptions }),
+  setLLMLoading: (loading) => set({ llmLoading: loading }),
+  setLLMProgress: (progress) => set({ llmProgress: progress }),
+
+  getFileDescription: (fileId) => {
+    const { descriptions } = get()
+    return descriptions[fileId] || null
+  },
 
   // Selectors
   getVisibleNodesAndEdges: () => {

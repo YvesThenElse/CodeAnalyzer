@@ -20,11 +20,13 @@ import React, { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { FileNodeData } from '../../types/graph.types'
 import { getContrastingTextColor, getDarkerColor, getGradientBackground, getColorWithAlpha } from '../../utils/colorUtils'
+import { useGraphStore } from '../../store/graphStore'
 
 type FileNodeProps = NodeProps<FileNodeData>
 
 function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
   const { file, isPrimary, isHighlighted, importCount, dependentCount } = data
+  const description = useGraphStore((state) => state.descriptions[file.relativePath])
 
   const borderColor = getDarkerColor(file.color, 10)
   const textColor = getContrastingTextColor(file.color)
@@ -100,24 +102,32 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
         </span>
       </div>
 
-      <div
-        className="file-node__folder"
-        style={{
-          fontSize: '11px',
-          opacity: 0.7,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          marginBottom: '8px'
-        }}
-      >
-        {file.folder || '.'}
-      </div>
+      {description?.short && (
+        <div
+          className="file-node__description"
+          style={{
+            fontSize: '14px',
+            color: '#1f2937',
+            marginBottom: '6px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.3',
+            fontWeight: 500
+          }}
+          title={description.short}
+        >
+          {description.short}
+        </div>
+      )}
 
       <div
         className="file-node__stats"
         style={{
           display: 'flex',
+          justifyContent: 'flex-end',
           gap: '10px',
           fontSize: '11px',
           opacity: 0.85
@@ -147,8 +157,8 @@ function FileNodeComponent({ data, selected }: FileNodeProps): JSX.Element {
         <div
           className="file-node__hint"
           style={{
-            fontSize: '10px',
-            marginTop: '8px',
+            fontSize: '9px',
+            marginTop: '4px',
             opacity: 0.6,
             textAlign: 'center'
           }}

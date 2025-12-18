@@ -16,11 +16,84 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useCallback } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import { useGraphStore } from '../../store/graphStore'
+import { LLMConfigModal } from './LLMConfigModal'
 
 export function Header(): JSX.Element {
-  const { graph, isLoading, setLoading, setGraph, setError, setProgress, reset } = useGraphStore()
+  const {
+    graph,
+    isLoading,
+    setLoading,
+    setGraph,
+    setError,
+    setProgress,
+    reset,
+    llmConfig,
+    llmLoading,
+    llmProgress,
+    setLLMConfig,
+    setLLMLoading,
+    setLLMProgress,
+    setDescriptions
+  } = useGraphStore()
+
+  const [configModalOpen, setConfigModalOpen] = useState(false)
+
+  // Setup LLM event listeners
+  useEffect(() => {
+    const unsubProgress = window.electronAPI.llm.onProgress((progress) => {
+      setLLMProgress(progress)
+    })
+
+    const unsubComplete = window.electronAPI.llm.onComplete((descriptions) => {
+      setDescriptions(descriptions)
+      setLLMLoading(false)
+      setLLMProgress(null)
+    })
+
+    const unsubError = window.electronAPI.llm.onError((error) => {
+      console.warn('LLM error:', error.message, error.file)
+      // Continue with other files, don't stop loading
+    })
+
+    return () => {
+      unsubProgress()
+      unsubComplete()
+      unsubError()
+    }
+  }, [setLLMProgress, setDescriptions, setLLMLoading])
+
+  // Load LLM config and descriptions when graph changes
+  useEffect(() => {
+    if (graph?.rootPath) {
+      // Load config
+      window.electronAPI.llm.getConfig(graph.rootPath).then((config) => {
+        setLLMConfig(config)
+
+        // Load existing descriptions
+        window.electronAPI.llm.getDescriptions(graph.rootPath).then((descriptions) => {
+          if (Object.keys(descriptions).length > 0) {
+            setDescriptions(descriptions)
+          } else if (config) {
+            // Auto-generate if config exists but no descriptions
+            setLLMLoading(true)
+            window.electronAPI.llm.generateDescriptions(graph.rootPath)
+          }
+        })
+      })
+    }
+  }, [graph?.rootPath, setLLMConfig, setDescriptions, setLLMLoading])
+
+  const handleGenerateDescriptions = useCallback(
+    async (forceRegenerate = false) => {
+      if (!graph?.rootPath || !llmConfig) return
+
+      setLLMLoading(true)
+      await window.electronAPI.llm.generateDescriptions(graph.rootPath, forceRegenerate)
+    },
+    [graph?.rootPath, llmConfig, setLLMLoading]
+  )
 
   const handleSelectDirectory = useCallback(async () => {
     try {
@@ -67,6 +140,11 @@ export function Header(): JSX.Element {
 
     setLoading(true)
 
+    // Invalidate LLM cache on refresh
+    if (llmConfig) {
+      await window.electronAPI.llm.invalidateCache(graph.rootPath)
+    }
+
     const unsubProgress = window.electronAPI.onAnalysisProgress((progress) => {
       setProgress(progress)
     })
@@ -82,6 +160,11 @@ export function Header(): JSX.Element {
       if (result) {
         // Pass serialized graph to store - store will deserialize it
         setGraph(result)
+        // Regenerate descriptions after refresh if config exists
+        if (llmConfig) {
+          setLLMLoading(true)
+          window.electronAPI.llm.generateDescriptions(graph.rootPath, true)
+        }
       }
     } finally {
       unsubProgress()
@@ -89,7 +172,7 @@ export function Header(): JSX.Element {
       setLoading(false)
       setProgress(null)
     }
-  }, [graph?.rootPath, setLoading, setProgress, setGraph, setError])
+  }, [graph?.rootPath, setLoading, setProgress, setGraph, setError, llmConfig, setLLMLoading])
 
   return (
     <div className="header">
@@ -111,6 +194,29 @@ export function Header(): JSX.Element {
         >
           Rafraîchir
         </button>
+
+        <button
+          className="btn btn--icon"
+          onClick={() => setConfigModalOpen(true)}
+          disabled={!graph}
+          title="Configuration LLM"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
+        {llmConfig && graph && (
+          <button
+            className="btn btn--secondary btn--small"
+            onClick={() => handleGenerateDescriptions(false)}
+            disabled={llmLoading}
+            title="Générer les descriptions IA"
+          >
+            {llmLoading ? 'Génération...' : 'Générer descriptions'}
+          </button>
+        )}
       </div>
 
       {graph && (
@@ -119,6 +225,17 @@ export function Header(): JSX.Element {
           <span className="header__file-count">{graph.files.size} fichiers</span>
         </div>
       )}
+
+      {llmProgress && (
+        <div className="header__llm-progress">
+          <span className="header__llm-progress-text">
+            IA: {llmProgress.current}/{llmProgress.total}
+          </span>
+          <span className="header__llm-progress-file">{llmProgress.currentFile}</span>
+        </div>
+      )}
+
+      <LLMConfigModal open={configModalOpen} onClose={() => setConfigModalOpen(false)} />
     </div>
   )
 }

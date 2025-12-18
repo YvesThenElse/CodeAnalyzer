@@ -16,10 +16,12 @@
     "build:linux": "npm run build && electron-builder --linux --config"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@xyflow/react": "^12.3.6",
     "dagre": "^0.8.5",
     "electron-store": "^8.2.0",
     "html-to-image": "^1.11.11",
+    "openai": "^6.14.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

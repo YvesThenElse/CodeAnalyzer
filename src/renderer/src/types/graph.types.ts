@@ -61,6 +61,9 @@ export interface FileNode {
   externalImports: string[]
   communityId?: string
   color: string
+  // LLM-generated descriptions
+  shortDescription?: string
+  longDescription?: string
 }
 
 export interface FileImport {

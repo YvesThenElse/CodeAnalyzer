@@ -39,6 +39,19 @@ export interface ElectronAPI {
   // Shell operations
   openFile: (filePath: string) => Promise<string>
   openFolder: (filePath: string) => Promise<void>
+
+  // LLM operations
+  llm: {
+    getConfig: (projectPath: string) => Promise<LLMConfig | null>
+    saveConfig: (projectPath: string, config: LLMConfig) => Promise<boolean>
+    testConnection: (config: LLMConfig) => Promise<{ success: boolean; error?: string }>
+    generateDescriptions: (projectPath: string, forceRegenerate?: boolean) => Promise<void>
+    getDescriptions: (projectPath: string) => Promise<Record<string, FileDescription>>
+    invalidateCache: (projectPath: string) => Promise<void>
+    onProgress: (callback: (progress: LLMProgress) => void) => () => void
+    onComplete: (callback: (descriptions: Record<string, FileDescription>) => void) => () => void
+    onError: (callback: (error: { message: string; file?: string }) => void) => () => void
+  }
 }
 
 // ===== ANALYSIS PROGRESS =====
@@ -65,6 +78,35 @@ export interface SaveFileOptions {
   defaultPath?: string
   filters: { name: string; extensions: string[] }[]
   data: string | Buffer
+}
+
+// ===== LLM CONFIGURATION =====
+
+export type LLMProvider = 'openai' | 'anthropic' | 'ollama'
+
+export interface LLMConfig {
+  provider: LLMProvider
+  apiKey: string
+  model: string
+  ollamaUrl?: string // http://localhost:11434 par défaut
+}
+
+export interface LLMProgress {
+  current: number
+  total: number
+  currentFile: string
+  phase: 'loading-cache' | 'generating' | 'saving'
+}
+
+export interface FileDescription {
+  short: string  // ~100 chars for cards
+  long: string   // paragraph for details panel
+}
+
+export const LLM_MODELS: Record<LLMProvider, string[]> = {
+  openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
+  ollama: ['llama3.1', 'llama3.2', 'codellama', 'mistral', 'deepseek-coder']
 }
 
 // ===== WINDOW AUGMENTATION =====
