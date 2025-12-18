@@ -973,6 +973,12 @@ svg.react-flow__connectionline {
 .file-tree-panel__item--focused .file-tree-panel__icon {
   filter: brightness(10);
 }
+.file-tree-panel__item--hovered {
+  outline: 2px solid #1168BD;
+  outline-offset: -2px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+  z-index: 5;
+}
 .file-tree-panel__item--visible {
   background: rgba(17, 104, 189, 0.08);
 }

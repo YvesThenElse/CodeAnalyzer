@@ -23358,6 +23358,7 @@ const useGraphStore = create((set2, get2) => ({
   showClusters: true,
   selectedNodeId: null,
   highlightedFileIds: /* @__PURE__ */ new Set(),
+  hoveredFileId: null,
   collapsedCodeGroups: /* @__PURE__ */ new Set(),
   llmConfig: null,
   descriptions: {},
@@ -23447,7 +23448,8 @@ const useGraphStore = create((set2, get2) => ({
     }
     set2({ highlightedFileIds: highlighted });
   },
-  clearHighlight: () => set2({ highlightedFileIds: /* @__PURE__ */ new Set() }),
+  clearHighlight: () => set2({ highlightedFileIds: /* @__PURE__ */ new Set(), hoveredFileId: null }),
+  setHoveredFileId: (fileId) => set2({ hoveredFileId: fileId }),
   toggleCodeGroup: (groupType) => set2((state) => {
     const newCollapsed = new Set(state.collapsedCodeGroups);
     if (newCollapsed.has(groupType)) {
@@ -23470,6 +23472,7 @@ const useGraphStore = create((set2, get2) => ({
     showClusters: true,
     selectedNodeId: null,
     highlightedFileIds: /* @__PURE__ */ new Set(),
+    hoveredFileId: null,
     collapsedCodeGroups: /* @__PURE__ */ new Set(),
     llmConfig: null,
     descriptions: {},
@@ -24055,6 +24058,7 @@ function useGraphNavigation() {
     goBackToFiles,
     highlightRelatedFiles,
     clearHighlight,
+    setHoveredFileId,
     graph: graph2
   } = useGraphStore();
   const handleFileClick = reactExports.useCallback(
@@ -24076,8 +24080,9 @@ function useGraphNavigation() {
   const handleFileMouseEnter = reactExports.useCallback(
     (fileId) => {
       highlightRelatedFiles(fileId);
+      setHoveredFileId(fileId);
     },
-    [highlightRelatedFiles]
+    [highlightRelatedFiles, setHoveredFileId]
   );
   const handleFileMouseLeave = reactExports.useCallback(() => {
     clearHighlight();
@@ -25162,6 +25167,7 @@ function FileTreeItem({
   depth,
   expandedPaths,
   focusedFileId,
+  hoveredFileId,
   visibleFilesInfo,
   onToggle,
   onFileClick,
@@ -25171,6 +25177,7 @@ function FileTreeItem({
   const isExpanded = expandedPaths.has(node.path);
   const isDirectory = node.type === "directory";
   const isFocused = node.fileId === focusedFileId;
+  const isHovered = node.fileId === hoveredFileId;
   const fileRelation = node.fileId ? visibleFilesInfo.get(node.fileId) : void 0;
   const handleClick = reactExports.useCallback(() => {
     if (isDirectory) {
@@ -25214,6 +25221,7 @@ function FileTreeItem({
   const itemClasses = [
     "file-tree-panel__item",
     isFocused && "file-tree-panel__item--focused",
+    isHovered && "file-tree-panel__item--hovered",
     isDirectory ? "file-tree-panel__item--directory" : "file-tree-panel__item--file"
   ].filter(Boolean).join(" ");
   const nameStyle = isFocused && node.color ? { color: "#ffffff", fontWeight: 600 } : {};
@@ -25267,6 +25275,7 @@ function FileTreeItem({
       depth: depth + 1,
       expandedPaths,
       focusedFileId,
+      hoveredFileId,
       visibleFilesInfo,
       onToggle,
       onFileClick,
@@ -25276,7 +25285,7 @@ function FileTreeItem({
   ))));
 }
 function FileTreePanel() {
-  const { graph: graph2, focusedFileId, folderColors } = useGraphStore();
+  const { graph: graph2, focusedFileId, hoveredFileId, folderColors } = useGraphStore();
   const getVisibleFilesInfo = useGraphStore((state) => state.getVisibleFilesInfo);
   const { focusOnFile } = useGraphNavigation();
   const visibleFilesInfo = reactExports.useMemo(() => getVisibleFilesInfo(), [getVisibleFilesInfo, focusedFileId]);
@@ -25429,6 +25438,7 @@ function FileTreePanel() {
         depth: 0,
         expandedPaths,
         focusedFileId,
+        hoveredFileId,
         visibleFilesInfo,
         onToggle: handleToggle,
         onFileClick: handleFileClick,

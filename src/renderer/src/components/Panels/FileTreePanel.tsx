@@ -165,6 +165,7 @@ interface FileTreeItemProps {
   depth: number
   expandedPaths: Set<string>
   focusedFileId: string | null
+  hoveredFileId: string | null
   visibleFilesInfo: Map<string, 'primary' | 'import' | 'usedBy'>
   onToggle: (path: string) => void
   onFileClick: (fileId: string) => void
@@ -177,6 +178,7 @@ function FileTreeItem({
   depth,
   expandedPaths,
   focusedFileId,
+  hoveredFileId,
   visibleFilesInfo,
   onToggle,
   onFileClick,
@@ -186,6 +188,7 @@ function FileTreeItem({
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
   const isFocused = node.fileId === focusedFileId
+  const isHovered = node.fileId === hoveredFileId
   const fileRelation = node.fileId ? visibleFilesInfo.get(node.fileId) : undefined
 
   const handleClick = useCallback(() => {
@@ -239,6 +242,7 @@ function FileTreeItem({
   const itemClasses = [
     'file-tree-panel__item',
     isFocused && 'file-tree-panel__item--focused',
+    isHovered && 'file-tree-panel__item--hovered',
     isDirectory ? 'file-tree-panel__item--directory' : 'file-tree-panel__item--file'
   ]
     .filter(Boolean)
@@ -315,6 +319,7 @@ function FileTreeItem({
               depth={depth + 1}
               expandedPaths={expandedPaths}
               focusedFileId={focusedFileId}
+              hoveredFileId={hoveredFileId}
               visibleFilesInfo={visibleFilesInfo}
               onToggle={onToggle}
               onFileClick={onFileClick}
@@ -329,7 +334,7 @@ function FileTreeItem({
 }
 
 export function FileTreePanel(): JSX.Element | null {
-  const { graph, focusedFileId, folderColors } = useGraphStore()
+  const { graph, focusedFileId, hoveredFileId, folderColors } = useGraphStore()
   const getVisibleFilesInfo = useGraphStore((state) => state.getVisibleFilesInfo)
   const { focusOnFile } = useGraphNavigation()
 
@@ -512,6 +517,7 @@ export function FileTreePanel(): JSX.Element | null {
           depth={0}
           expandedPaths={expandedPaths}
           focusedFileId={focusedFileId}
+          hoveredFileId={hoveredFileId}
           visibleFilesInfo={visibleFilesInfo}
           onToggle={handleToggle}
           onFileClick={handleFileClick}

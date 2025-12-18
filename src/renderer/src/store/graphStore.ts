@@ -64,6 +64,7 @@ interface GraphState {
   // Selection & Highlight
   selectedNodeId: string | null
   highlightedFileIds: Set<string>
+  hoveredFileId: string | null
 
   // Code view state
   collapsedCodeGroups: Set<string>
@@ -94,6 +95,7 @@ interface GraphState {
   setSelectedNodeId: (id: string | null) => void
   highlightRelatedFiles: (fileId: string) => void
   clearHighlight: () => void
+  setHoveredFileId: (fileId: string | null) => void
 
   // Code view actions
   toggleCodeGroup: (groupType: string) => void
@@ -214,6 +216,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   showClusters: true,
   selectedNodeId: null,
   highlightedFileIds: new Set(),
+  hoveredFileId: null,
   collapsedCodeGroups: new Set(),
   llmConfig: null,
   descriptions: {},
@@ -324,7 +327,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set({ highlightedFileIds: highlighted })
   },
 
-  clearHighlight: () => set({ highlightedFileIds: new Set() }),
+  clearHighlight: () => set({ highlightedFileIds: new Set(), hoveredFileId: null }),
+
+  setHoveredFileId: (fileId) => set({ hoveredFileId: fileId }),
 
   toggleCodeGroup: (groupType) =>
     set((state) => {
@@ -351,6 +356,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       showClusters: true,
       selectedNodeId: null,
       highlightedFileIds: new Set(),
+      hoveredFileId: null,
       collapsedCodeGroups: new Set(),
       llmConfig: null,
       descriptions: {},

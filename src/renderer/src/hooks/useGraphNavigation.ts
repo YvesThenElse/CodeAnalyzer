@@ -33,6 +33,7 @@ export function useGraphNavigation() {
     goBackToFiles,
     highlightRelatedFiles,
     clearHighlight,
+    setHoveredFileId,
     graph
   } = useGraphStore()
 
@@ -65,12 +66,14 @@ export function useGraphNavigation() {
   /**
    * Handle mouse enter on a file node
    * - Highlights related files
+   * - Sets hovered file for tree panel
    */
   const handleFileMouseEnter = useCallback(
     (fileId: string) => {
       highlightRelatedFiles(fileId)
+      setHoveredFileId(fileId)
     },
-    [highlightRelatedFiles]
+    [highlightRelatedFiles, setHoveredFileId]
   )
 
   /**
