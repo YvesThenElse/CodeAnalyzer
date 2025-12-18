@@ -170,6 +170,13 @@ export interface CodeItemNodeData {
   isExternalRef: boolean
 }
 
+export interface CodeGroupNodeData {
+  type: CodeItemType
+  items: CodeItem[]
+  file: FileNode
+  isCollapsed: boolean
+}
+
 export interface ImportEdgeData {
   relation: ImportRelation
   isHighlighted: boolean

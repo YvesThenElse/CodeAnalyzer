@@ -15877,6 +15877,16 @@ var GraphLevel = /* @__PURE__ */ ((GraphLevel2) => {
   GraphLevel2[GraphLevel2["CODE"] = 2] = "CODE";
   return GraphLevel2;
 })(GraphLevel || {});
+var CodeItemType = /* @__PURE__ */ ((CodeItemType2) => {
+  CodeItemType2["FUNCTION"] = "function";
+  CodeItemType2["CLASS"] = "class";
+  CodeItemType2["CONST"] = "const";
+  CodeItemType2["REACT_COMPONENT"] = "react_component";
+  CodeItemType2["HOOK"] = "hook";
+  CodeItemType2["TYPE"] = "type";
+  CodeItemType2["INTERFACE"] = "interface";
+  return CodeItemType2;
+})(CodeItemType || {});
 var ClusteringMode = /* @__PURE__ */ ((ClusteringMode2) => {
   ClusteringMode2["FOLDER"] = "folder";
   ClusteringMode2["COMMUNITY"] = "community";
@@ -23348,6 +23358,7 @@ const useGraphStore = create((set2, get2) => ({
   showClusters: true,
   selectedNodeId: null,
   highlightedFileIds: /* @__PURE__ */ new Set(),
+  collapsedCodeGroups: /* @__PURE__ */ new Set(),
   llmConfig: null,
   descriptions: {},
   llmLoading: false,
@@ -23437,6 +23448,15 @@ const useGraphStore = create((set2, get2) => ({
     set2({ highlightedFileIds: highlighted });
   },
   clearHighlight: () => set2({ highlightedFileIds: /* @__PURE__ */ new Set() }),
+  toggleCodeGroup: (groupType) => set2((state) => {
+    const newCollapsed = new Set(state.collapsedCodeGroups);
+    if (newCollapsed.has(groupType)) {
+      newCollapsed.delete(groupType);
+    } else {
+      newCollapsed.add(groupType);
+    }
+    return { collapsedCodeGroups: newCollapsed };
+  }),
   reset: () => set2({
     graph: null,
     isLoading: false,
@@ -23450,6 +23470,7 @@ const useGraphStore = create((set2, get2) => ({
     showClusters: true,
     selectedNodeId: null,
     highlightedFileIds: /* @__PURE__ */ new Set(),
+    collapsedCodeGroups: /* @__PURE__ */ new Set(),
     llmConfig: null,
     descriptions: {},
     llmLoading: false,
@@ -23471,14 +23492,14 @@ const useGraphStore = create((set2, get2) => ({
   },
   // Selectors
   getVisibleNodesAndEdges: () => {
-    const { graph: graph2, currentLevel, focusedFileId, selectedFileId, highlightedFileIds } = get2();
+    const { graph: graph2, currentLevel, focusedFileId, selectedFileId, highlightedFileIds, collapsedCodeGroups } = get2();
     if (!graph2) {
       return { nodes: [], edges: [] };
     }
     if (currentLevel === GraphLevel.FILES) {
       return getFileNodesAndEdges(graph2, focusedFileId, highlightedFileIds);
     } else {
-      return getCodeNodesAndEdges(graph2, selectedFileId);
+      return getCodeNodesAndEdges(graph2, selectedFileId, collapsedCodeGroups);
     }
   },
   getSelectedFile: () => {
@@ -23622,7 +23643,7 @@ function getFileNodesAndEdges(graph2, focusedFileId, highlightedFileIds) {
   const layoutedNodes = calculateLayout(nodes, edges);
   return { nodes: layoutedNodes, edges };
 }
-function getCodeNodesAndEdges(graph2, selectedFileId) {
+function getCodeNodesAndEdges(graph2, selectedFileId, collapsedCodeGroups) {
   if (!selectedFileId) {
     return { nodes: [], edges: [] };
   }
@@ -23630,20 +23651,95 @@ function getCodeNodesAndEdges(graph2, selectedFileId) {
   if (!file) {
     return { nodes: [], edges: [] };
   }
-  const nodes = file.codeItems.map((item, index2) => ({
-    id: item.id,
-    type: "codeItemNode",
-    position: { x: 0, y: index2 * 80 },
-    // Simple vertical layout
+  const groupedItems = /* @__PURE__ */ new Map();
+  for (const item of file.codeItems) {
+    const existing = groupedItems.get(item.type) || [];
+    existing.push(item);
+    groupedItems.set(item.type, existing);
+  }
+  const fixedPositions = {
+    [CodeItemType.INTERFACE]: { col: 0, row: 0 },
+    // top-left
+    [CodeItemType.TYPE]: { col: 1, row: 0 },
+    // top-right
+    [CodeItemType.FUNCTION]: { col: 0, row: 1 },
+    // bottom-left
+    [CodeItemType.CONST]: { col: 1, row: 1 }
+    // bottom-right
+  };
+  const extraTypeOrder = [
+    CodeItemType.REACT_COMPONENT,
+    CodeItemType.HOOK,
+    CodeItemType.CLASS
+  ];
+  const CARD_WIDTH = 320;
+  const CARD_SPACING = 30;
+  const HEADER_HEIGHT = 48;
+  const ITEM_HEIGHT = 36;
+  const getNodeHeight = (items, isCollapsed) => {
+    return isCollapsed ? HEADER_HEIGHT : HEADER_HEIGHT + items.length * ITEM_HEIGHT;
+  };
+  const nodeInfos = [];
+  for (const [type, pos] of Object.entries(fixedPositions)) {
+    const items = groupedItems.get(type);
+    if (!items || items.length === 0) continue;
+    const isCollapsed = collapsedCodeGroups.has(type);
+    nodeInfos.push({
+      type,
+      items,
+      isCollapsed,
+      col: pos.col,
+      row: pos.row,
+      height: getNodeHeight(items, isCollapsed)
+    });
+  }
+  let extraCol = 2;
+  let extraRow = 0;
+  for (const type of extraTypeOrder) {
+    const items = groupedItems.get(type);
+    if (!items || items.length === 0) continue;
+    const isCollapsed = collapsedCodeGroups.has(type);
+    nodeInfos.push({
+      type,
+      items,
+      isCollapsed,
+      col: extraCol,
+      row: extraRow,
+      height: getNodeHeight(items, isCollapsed)
+    });
+    if (extraRow === 1) {
+      extraCol++;
+    }
+    extraRow = extraRow === 0 ? 1 : 0;
+  }
+  const maxHeightPerRow = /* @__PURE__ */ new Map();
+  for (const info of nodeInfos) {
+    const currentMax = maxHeightPerRow.get(info.row) || 0;
+    maxHeightPerRow.set(info.row, Math.max(currentMax, info.height));
+  }
+  const rowYOffset = /* @__PURE__ */ new Map();
+  let cumulativeY = 0;
+  const sortedRows = Array.from(maxHeightPerRow.keys()).sort();
+  for (const row of sortedRows) {
+    rowYOffset.set(row, cumulativeY);
+    cumulativeY += (maxHeightPerRow.get(row) || 0) + CARD_SPACING;
+  }
+  const nodes = nodeInfos.map((info) => ({
+    id: `group-${info.type}`,
+    type: "codeGroupNode",
+    position: {
+      x: info.col * (CARD_WIDTH + CARD_SPACING),
+      y: rowYOffset.get(info.row) || 0
+    },
     data: {
-      item,
+      type: info.type,
+      items: info.items,
       file,
-      isExternalRef: false
+      isCollapsed: info.isCollapsed
     }
   }));
   const edges = [];
-  const layoutedNodes = calculateLayout(nodes, edges);
-  return { nodes: layoutedNodes, edges };
+  return { nodes, edges };
 }
 const LLM_MODELS = {
   openai: ["gpt-4o", "gpt-4-turbo", "gpt-4o-mini", "gpt-3.5-turbo"],
@@ -24033,27 +24129,25 @@ function BackButton() {
         display: "flex",
         alignItems: "center",
         gap: "8px",
-        padding: "8px 16px",
-        backgroundColor: "#ffffff",
-        border: "1px solid #e2e8f0",
+        padding: "10px 16px",
+        backgroundColor: "#1e293b",
+        border: "none",
         borderRadius: "8px",
         cursor: "pointer",
         fontSize: "13px",
-        color: "#475569",
+        color: "#ffffff",
         transition: "all 0.15s ease",
-        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)"
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)"
       },
       onMouseEnter: (e) => {
-        e.currentTarget.style.backgroundColor = "#f8fafc";
-        e.currentTarget.style.borderColor = "#cbd5e1";
+        e.currentTarget.style.backgroundColor = "#334155";
       },
       onMouseLeave: (e) => {
-        e.currentTarget.style.backgroundColor = "#ffffff";
-        e.currentTarget.style.borderColor = "#e2e8f0";
+        e.currentTarget.style.backgroundColor = "#1e293b";
       }
     },
-    /* @__PURE__ */ React$2.createElement("span", { style: { fontSize: "16px" } }, "\\u2190"),
-    /* @__PURE__ */ React$2.createElement("span", null, "Retour"),
+    /* @__PURE__ */ React$2.createElement("span", { style: { fontSize: "16px" } }, "←"),
+    /* @__PURE__ */ React$2.createElement("span", null, "Retour aux fichiers"),
     currentFile && /* @__PURE__ */ React$2.createElement(
       "span",
       {
@@ -24368,6 +24462,188 @@ function CodeItemNodeComponent({ data, selected: selected2 }) {
   );
 }
 const CodeItemNode = reactExports.memo(CodeItemNodeComponent);
+const codeGroupStyles = {
+  function: { icon: "ƒ", color: "#3B82F6", bgColor: "#EFF6FF", label: "Functions" },
+  class: { icon: "C", color: "#8B5CF6", bgColor: "#F5F3FF", label: "Classes" },
+  const: { icon: "=", color: "#6B7280", bgColor: "#F9FAFB", label: "Constants" },
+  react_component: { icon: "⚛", color: "#06B6D4", bgColor: "#ECFEFF", label: "React Components" },
+  hook: { icon: "↩", color: "#10B981", bgColor: "#ECFDF5", label: "Hooks" },
+  type: { icon: "T", color: "#EC4899", bgColor: "#FDF2F8", label: "Types" },
+  interface: { icon: "I", color: "#F59E0B", bgColor: "#FFFBEB", label: "Interfaces" }
+};
+function CodeGroupNodeComponent({ data }) {
+  const { type, items, isCollapsed } = data;
+  const toggleCodeGroup = useGraphStore((state) => state.toggleCodeGroup);
+  const style2 = codeGroupStyles[type] || codeGroupStyles.const;
+  const handleToggle = reactExports.useCallback(
+    (e) => {
+      e.stopPropagation();
+      toggleCodeGroup(type);
+    },
+    [type, toggleCodeGroup]
+  );
+  const renderItem = (item) => /* @__PURE__ */ React$2.createElement(
+    "div",
+    {
+      key: item.id,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "6px 10px",
+        borderBottom: "1px solid #f3f4f6",
+        backgroundColor: "#ffffff"
+      }
+    },
+    /* @__PURE__ */ React$2.createElement(
+      "span",
+      {
+        style: {
+          fontWeight: 500,
+          fontSize: "12px",
+          color: "#1f2937",
+          flex: 1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }
+      },
+      item.name,
+      item.signature && /* @__PURE__ */ React$2.createElement("span", { style: { color: "#9ca3af", fontFamily: "monospace", marginLeft: "4px" } }, item.signature)
+    ),
+    /* @__PURE__ */ React$2.createElement("div", { style: { display: "flex", gap: "4px", fontSize: "9px" } }, item.isExported && /* @__PURE__ */ React$2.createElement(
+      "span",
+      {
+        style: {
+          padding: "1px 4px",
+          backgroundColor: "#DEF7EC",
+          color: "#046C4E",
+          borderRadius: "3px"
+        }
+      },
+      "export"
+    ), item.isDefault && /* @__PURE__ */ React$2.createElement(
+      "span",
+      {
+        style: {
+          padding: "1px 4px",
+          backgroundColor: "#E1EFFE",
+          color: "#1E40AF",
+          borderRadius: "3px"
+        }
+      },
+      "default"
+    ))
+  );
+  return /* @__PURE__ */ React$2.createElement(
+    "div",
+    {
+      className: "code-group-node",
+      style: {
+        minWidth: "280px",
+        maxWidth: "400px",
+        backgroundColor: "#ffffff",
+        border: `2px solid ${style2.color}`,
+        borderRadius: "10px",
+        overflow: "hidden",
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+        transition: "all 0.2s ease"
+      }
+    },
+    /* @__PURE__ */ React$2.createElement(Handle, { type: "target", position: Position.Top, style: { background: style2.color } }),
+    /* @__PURE__ */ React$2.createElement(
+      "div",
+      {
+        onClick: handleToggle,
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "10px 14px",
+          backgroundColor: style2.bgColor,
+          borderBottom: isCollapsed ? "none" : `1px solid ${style2.color}20`,
+          cursor: "pointer",
+          userSelect: "none"
+        }
+      },
+      /* @__PURE__ */ React$2.createElement(
+        "div",
+        {
+          style: {
+            width: "28px",
+            height: "28px",
+            borderRadius: "6px",
+            backgroundColor: style2.color,
+            color: "#ffffff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: "14px",
+            flexShrink: 0
+          }
+        },
+        style2.icon
+      ),
+      /* @__PURE__ */ React$2.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React$2.createElement(
+        "span",
+        {
+          style: {
+            fontWeight: 600,
+            fontSize: "14px",
+            color: "#1f2937"
+          }
+        },
+        style2.label
+      ), /* @__PURE__ */ React$2.createElement(
+        "span",
+        {
+          style: {
+            marginLeft: "8px",
+            fontSize: "12px",
+            color: "#6b7280",
+            fontWeight: 500
+          }
+        },
+        "(",
+        items.length,
+        ")"
+      )),
+      /* @__PURE__ */ React$2.createElement(
+        "div",
+        {
+          style: {
+            width: "24px",
+            height: "24px",
+            borderRadius: "4px",
+            backgroundColor: style2.color + "20",
+            color: style2.color,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "12px",
+            fontWeight: 700,
+            transition: "transform 0.2s ease",
+            transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)"
+          }
+        },
+        "▼"
+      )
+    ),
+    !isCollapsed && /* @__PURE__ */ React$2.createElement(
+      "div",
+      {
+        style: {
+          maxHeight: "300px",
+          overflowY: "auto"
+        }
+      },
+      items.map(renderItem)
+    ),
+    /* @__PURE__ */ React$2.createElement(Handle, { type: "source", position: Position.Bottom, style: { background: style2.color } })
+  );
+}
+const CodeGroupNode = reactExports.memo(CodeGroupNodeComponent);
 function ImportEdge({
   id: id2,
   sourceX,
@@ -24442,7 +24718,8 @@ function ImportEdge({
 }
 const nodeTypes = {
   fileNode: FileNode,
-  codeItemNode: CodeItemNode
+  codeItemNode: CodeItemNode,
+  codeGroupNode: CodeGroupNode
 };
 const edgeTypes = {
   importEdge: ImportEdge
@@ -24454,6 +24731,7 @@ function DiagramView() {
     currentLevel,
     focusedFileId,
     selectedFileId,
+    collapsedCodeGroups,
     setSelectedNodeId
   } = useGraphStore();
   const {
@@ -24467,7 +24745,7 @@ function DiagramView() {
   const prevCurrentLevel = reactExports.useRef(currentLevel);
   const { nodes: storeNodes, edges: storeEdges } = reactExports.useMemo(
     () => getVisibleNodesAndEdges(),
-    [getVisibleNodesAndEdges, graph2, currentLevel, focusedFileId, selectedFileId]
+    [getVisibleNodesAndEdges, graph2, currentLevel, focusedFileId, selectedFileId, collapsedCodeGroups]
   );
   useOnSelectionChange({
     onChange: ({ nodes: nodes2 }) => {
@@ -24579,6 +24857,10 @@ function DiagramView() {
             return data?.file?.color || "#94a3b8";
           }
           if (node.type === "codeItemNode") {
+            const data = node.data;
+            return data?.file?.color || "#94a3b8";
+          }
+          if (node.type === "codeGroupNode") {
             const data = node.data;
             return data?.file?.color || "#94a3b8";
           }
@@ -25211,7 +25493,7 @@ function ErrorDisplay() {
 }
 function App() {
   const isLoading = useGraphStore((state) => state.isLoading);
-  return /* @__PURE__ */ React$2.createElement(ErrorBoundary, null, /* @__PURE__ */ React$2.createElement(ReactFlowProvider, null, /* @__PURE__ */ React$2.createElement("div", { className: "app" }, /* @__PURE__ */ React$2.createElement("header", { className: "app__header" }, /* @__PURE__ */ React$2.createElement(Header, null)), /* @__PURE__ */ React$2.createElement("nav", { className: "app__toolbar" }, /* @__PURE__ */ React$2.createElement(BackButton, null)), /* @__PURE__ */ React$2.createElement("div", { className: "app__main" }, /* @__PURE__ */ React$2.createElement(FileTreePanel, null), /* @__PURE__ */ React$2.createElement("main", { className: "app__content" }, /* @__PURE__ */ React$2.createElement(DiagramView, null)), /* @__PURE__ */ React$2.createElement(NodeDetailsPanel, null)), isLoading && /* @__PURE__ */ React$2.createElement(LoadingOverlay, null), /* @__PURE__ */ React$2.createElement(ErrorDisplay, null))));
+  return /* @__PURE__ */ React$2.createElement(ErrorBoundary, null, /* @__PURE__ */ React$2.createElement(ReactFlowProvider, null, /* @__PURE__ */ React$2.createElement("div", { className: "app" }, /* @__PURE__ */ React$2.createElement("header", { className: "app__header" }, /* @__PURE__ */ React$2.createElement(Header, null)), /* @__PURE__ */ React$2.createElement("div", { className: "app__main" }, /* @__PURE__ */ React$2.createElement(FileTreePanel, null), /* @__PURE__ */ React$2.createElement("main", { className: "app__content" }, /* @__PURE__ */ React$2.createElement("div", { style: { position: "absolute", top: "16px", left: "16px", zIndex: 10 } }, /* @__PURE__ */ React$2.createElement(BackButton, null)), /* @__PURE__ */ React$2.createElement(DiagramView, null)), /* @__PURE__ */ React$2.createElement(NodeDetailsPanel, null)), isLoading && /* @__PURE__ */ React$2.createElement(LoadingOverlay, null), /* @__PURE__ */ React$2.createElement(ErrorDisplay, null))));
 }
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ React$2.createElement(React$2.StrictMode, null, /* @__PURE__ */ React$2.createElement(App, null))

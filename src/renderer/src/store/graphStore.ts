@@ -21,12 +21,14 @@ import type { Node, Edge } from '@xyflow/react'
 import {
   GraphLevel,
   ClusteringMode,
+  CodeItemType,
   type AnalyzedGraph,
   type SerializedAnalyzedGraph,
   type FileNode,
   type CodeItem,
   type FileNodeData,
   type CodeItemNodeData,
+  type CodeGroupNodeData,
   type ImportRelation,
   type Cluster
 } from '../types/graph.types'
@@ -37,7 +39,8 @@ import { getUniqueFolderColor } from '../utils/colorUtils'
 // Define types for our custom nodes
 type GraphFileNode = Node<FileNodeData, 'fileNode'>
 type GraphCodeNode = Node<CodeItemNodeData, 'codeItemNode'>
-type GraphNode = GraphFileNode | GraphCodeNode
+type GraphCodeGroupNode = Node<CodeGroupNodeData, 'codeGroupNode'>
+type GraphNode = GraphFileNode | GraphCodeNode | GraphCodeGroupNode
 
 interface GraphState {
   // Project data
@@ -61,6 +64,9 @@ interface GraphState {
   // Selection & Highlight
   selectedNodeId: string | null
   highlightedFileIds: Set<string>
+
+  // Code view state
+  collapsedCodeGroups: Set<string>
 
   // LLM State
   llmConfig: LLMConfig | null
@@ -88,6 +94,9 @@ interface GraphState {
   setSelectedNodeId: (id: string | null) => void
   highlightRelatedFiles: (fileId: string) => void
   clearHighlight: () => void
+
+  // Code view actions
+  toggleCodeGroup: (groupType: string) => void
 
   // Reset
   reset: () => void
@@ -205,6 +214,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   showClusters: true,
   selectedNodeId: null,
   highlightedFileIds: new Set(),
+  collapsedCodeGroups: new Set(),
   llmConfig: null,
   descriptions: {},
   llmLoading: false,
@@ -316,6 +326,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   clearHighlight: () => set({ highlightedFileIds: new Set() }),
 
+  toggleCodeGroup: (groupType) =>
+    set((state) => {
+      const newCollapsed = new Set(state.collapsedCodeGroups)
+      if (newCollapsed.has(groupType)) {
+        newCollapsed.delete(groupType)
+      } else {
+        newCollapsed.add(groupType)
+      }
+      return { collapsedCodeGroups: newCollapsed }
+    }),
+
   reset: () =>
     set({
       graph: null,
@@ -330,6 +351,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       showClusters: true,
       selectedNodeId: null,
       highlightedFileIds: new Set(),
+      collapsedCodeGroups: new Set(),
       llmConfig: null,
       descriptions: {},
       llmLoading: false,
@@ -355,7 +377,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   // Selectors
   getVisibleNodesAndEdges: () => {
-    const { graph, currentLevel, focusedFileId, selectedFileId, highlightedFileIds } = get()
+    const { graph, currentLevel, focusedFileId, selectedFileId, highlightedFileIds, collapsedCodeGroups } = get()
 
     if (!graph) {
       return { nodes: [], edges: [] }
@@ -364,7 +386,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     if (currentLevel === GraphLevel.FILES) {
       return getFileNodesAndEdges(graph, focusedFileId, highlightedFileIds)
     } else {
-      return getCodeNodesAndEdges(graph, selectedFileId)
+      return getCodeNodesAndEdges(graph, selectedFileId, collapsedCodeGroups)
     }
   },
 
@@ -560,11 +582,13 @@ function getFileNodesAndEdges(
 }
 
 /**
- * Get code-level nodes for a specific file
+ * Get code-level nodes for a specific file (grouped by type)
+ * Layout: 2x2 grid with fixed positions + extra types to the right
  */
 function getCodeNodesAndEdges(
   graph: AnalyzedGraph,
-  selectedFileId: string | null
+  selectedFileId: string | null,
+  collapsedCodeGroups: Set<string>
 ): { nodes: GraphNode[]; edges: Edge[] } {
   if (!selectedFileId) {
     return { nodes: [], edges: [] }
@@ -575,22 +599,126 @@ function getCodeNodesAndEdges(
     return { nodes: [], edges: [] }
   }
 
-  const nodes: GraphCodeNode[] = file.codeItems.map((item, index) => ({
-    id: item.id,
-    type: 'codeItemNode',
-    position: { x: 0, y: index * 80 }, // Simple vertical layout
+  // Group code items by type
+  const groupedItems = new Map<CodeItemType, CodeItem[]>()
+  for (const item of file.codeItems) {
+    const existing = groupedItems.get(item.type) || []
+    existing.push(item)
+    groupedItems.set(item.type, existing)
+  }
+
+  // Fixed positions for the 4 main types (col, row)
+  const fixedPositions: Partial<Record<CodeItemType, { col: number; row: number }>> = {
+    [CodeItemType.INTERFACE]: { col: 0, row: 0 },  // top-left
+    [CodeItemType.TYPE]: { col: 1, row: 0 },       // top-right
+    [CodeItemType.FUNCTION]: { col: 0, row: 1 },   // bottom-left
+    [CodeItemType.CONST]: { col: 1, row: 1 }       // bottom-right
+  }
+
+  // Extra types that go to the right, alternating top/bottom
+  const extraTypeOrder: CodeItemType[] = [
+    CodeItemType.REACT_COMPONENT,
+    CodeItemType.HOOK,
+    CodeItemType.CLASS
+  ]
+
+  // Layout constants
+  const CARD_WIDTH = 320
+  const CARD_SPACING = 30
+  const HEADER_HEIGHT = 48
+  const ITEM_HEIGHT = 36
+
+  // Helper to calculate node height
+  const getNodeHeight = (items: CodeItem[], isCollapsed: boolean): number => {
+    return isCollapsed ? HEADER_HEIGHT : HEADER_HEIGHT + items.length * ITEM_HEIGHT
+  }
+
+  // First pass: collect all nodes with their grid positions
+  interface NodeInfo {
+    type: CodeItemType
+    items: CodeItem[]
+    isCollapsed: boolean
+    col: number
+    row: number
+    height: number
+  }
+
+  const nodeInfos: NodeInfo[] = []
+
+  // Add fixed position types
+  for (const [type, pos] of Object.entries(fixedPositions)) {
+    const items = groupedItems.get(type as CodeItemType)
+    if (!items || items.length === 0) continue
+
+    const isCollapsed = collapsedCodeGroups.has(type)
+    nodeInfos.push({
+      type: type as CodeItemType,
+      items,
+      isCollapsed,
+      col: pos.col,
+      row: pos.row,
+      height: getNodeHeight(items, isCollapsed)
+    })
+  }
+
+  // Add extra types to the right, alternating rows
+  let extraCol = 2
+  let extraRow = 0 // Start with top row
+  for (const type of extraTypeOrder) {
+    const items = groupedItems.get(type)
+    if (!items || items.length === 0) continue
+
+    const isCollapsed = collapsedCodeGroups.has(type)
+    nodeInfos.push({
+      type,
+      items,
+      isCollapsed,
+      col: extraCol,
+      row: extraRow,
+      height: getNodeHeight(items, isCollapsed)
+    })
+
+    // Alternate row, increment column every 2 items
+    if (extraRow === 1) {
+      extraCol++
+    }
+    extraRow = extraRow === 0 ? 1 : 0
+  }
+
+  // Calculate max height per row for proper Y positioning
+  const maxHeightPerRow = new Map<number, number>()
+  for (const info of nodeInfos) {
+    const currentMax = maxHeightPerRow.get(info.row) || 0
+    maxHeightPerRow.set(info.row, Math.max(currentMax, info.height))
+  }
+
+  // Calculate Y offset for each row
+  const rowYOffset = new Map<number, number>()
+  let cumulativeY = 0
+  const sortedRows = Array.from(maxHeightPerRow.keys()).sort()
+  for (const row of sortedRows) {
+    rowYOffset.set(row, cumulativeY)
+    cumulativeY += (maxHeightPerRow.get(row) || 0) + CARD_SPACING
+  }
+
+  // Create nodes with calculated positions
+  const nodes: GraphCodeGroupNode[] = nodeInfos.map((info) => ({
+    id: `group-${info.type}`,
+    type: 'codeGroupNode',
+    position: {
+      x: info.col * (CARD_WIDTH + CARD_SPACING),
+      y: rowYOffset.get(info.row) || 0
+    },
     data: {
-      item,
+      type: info.type,
+      items: info.items,
       file,
-      isExternalRef: false
+      isCollapsed: info.isCollapsed
     }
   }))
 
-  // No edges at code level (for now - could add internal call graph later)
+  // No edges at code level
   const edges: Edge[] = []
 
-  // Calculate layout
-  const layoutedNodes = calculateLayout(nodes, edges)
-
-  return { nodes: layoutedNodes as GraphNode[], edges }
+  return { nodes: nodes as GraphNode[], edges }
 }

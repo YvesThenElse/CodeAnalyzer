@@ -35,12 +35,14 @@ import { useGraphStore } from '../../store/graphStore'
 import { useGraphNavigation } from '../../hooks/useGraphNavigation'
 import { FileNode } from './FileNode'
 import { CodeItemNode } from './CodeItemNode'
+import { CodeGroupNode } from './CodeGroupNode'
 import { ImportEdge } from './ImportEdge'
-import { GraphLevel, type FileNodeData, type CodeItemNodeData } from '../../types/graph.types'
+import { GraphLevel, type FileNodeData, type CodeItemNodeData, type CodeGroupNodeData } from '../../types/graph.types'
 
 const nodeTypes = {
   fileNode: FileNode,
-  codeItemNode: CodeItemNode
+  codeItemNode: CodeItemNode,
+  codeGroupNode: CodeGroupNode
 }
 
 const edgeTypes = {
@@ -54,6 +56,7 @@ export function DiagramView(): JSX.Element {
     currentLevel,
     focusedFileId,
     selectedFileId,
+    collapsedCodeGroups,
     setSelectedNodeId
   } = useGraphStore()
 
@@ -71,7 +74,7 @@ export function DiagramView(): JSX.Element {
   // Get nodes and edges from store (depends on navigation state)
   const { nodes: storeNodes, edges: storeEdges } = useMemo(
     () => getVisibleNodesAndEdges(),
-    [getVisibleNodesAndEdges, graph, currentLevel, focusedFileId, selectedFileId]
+    [getVisibleNodesAndEdges, graph, currentLevel, focusedFileId, selectedFileId, collapsedCodeGroups]
   )
 
   // Listen to selection changes and update store
@@ -227,6 +230,10 @@ export function DiagramView(): JSX.Element {
             }
             if (node.type === 'codeItemNode') {
               const data = node.data as CodeItemNodeData
+              return data?.file?.color || '#94a3b8'
+            }
+            if (node.type === 'codeGroupNode') {
+              const data = node.data as CodeGroupNodeData
               return data?.file?.color || '#94a3b8'
             }
             return '#94a3b8'

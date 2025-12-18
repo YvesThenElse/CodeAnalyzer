@@ -35,27 +35,25 @@ export function BackButton(): JSX.Element | null {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        padding: '8px 16px',
-        backgroundColor: '#ffffff',
-        border: '1px solid #e2e8f0',
+        padding: '10px 16px',
+        backgroundColor: '#1e293b',
+        border: 'none',
         borderRadius: '8px',
         cursor: 'pointer',
         fontSize: '13px',
-        color: '#475569',
+        color: '#ffffff',
         transition: 'all 0.15s ease',
-        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = '#f8fafc'
-        e.currentTarget.style.borderColor = '#cbd5e1'
+        e.currentTarget.style.backgroundColor = '#334155'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = '#ffffff'
-        e.currentTarget.style.borderColor = '#e2e8f0'
+        e.currentTarget.style.backgroundColor = '#1e293b'
       }}
     >
-      <span style={{ fontSize: '16px' }}>\u2190</span>
-      <span>Retour</span>
+      <span style={{ fontSize: '16px' }}>←</span>
+      <span>Retour aux fichiers</span>
       {currentFile && (
         <span
           style={{

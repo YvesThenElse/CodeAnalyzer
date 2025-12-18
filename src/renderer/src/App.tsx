@@ -84,12 +84,12 @@ function App(): JSX.Element {
           <header className="app__header">
             <Header />
           </header>
-          <nav className="app__toolbar">
-            <BackButton />
-          </nav>
           <div className="app__main">
             <FileTreePanel />
             <main className="app__content">
+              <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>
+                <BackButton />
+              </div>
               <DiagramView />
             </main>
             <NodeDetailsPanel />
