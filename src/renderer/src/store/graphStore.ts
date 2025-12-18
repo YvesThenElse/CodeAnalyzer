@@ -32,6 +32,7 @@ import {
 } from '../types/graph.types'
 import type { AnalysisProgress, LLMConfig, LLMProgress, FileDescription } from '../types/electron.types'
 import { calculateLayout } from '../utils/layoutUtils'
+import { getUniqueFolderColor } from '../utils/colorUtils'
 
 // Define types for our custom nodes
 type GraphFileNode = Node<FileNodeData, 'fileNode'>
@@ -44,6 +45,9 @@ interface GraphState {
   isLoading: boolean
   error: string | null
   progress: AnalysisProgress | null
+
+  // Folder colors mapping (folder path -> HSL color)
+  folderColors: Map<string, string>
 
   // Navigation
   currentLevel: GraphLevel
@@ -106,6 +110,7 @@ interface GraphState {
   getRelatedFiles: (fileId: string) => { imports: FileNode[]; importedBy: FileNode[] }
   getAllFilePaths: () => Set<string>
   getFocusedFilePath: () => string | null
+  getFolderColor: (folderPath: string) => string | undefined
 }
 
 /**
@@ -152,12 +157,46 @@ function deserializeGraph(serialized: SerializedAnalyzedGraph): AnalyzedGraph {
   }
 }
 
+/**
+ * Compute unique colors for all folders in the graph.
+ * Folders are sorted alphabetically to ensure consistent colors across sessions.
+ */
+function computeFolderColors(graph: AnalyzedGraph): Map<string, string> {
+  const folderColors = new Map<string, string>()
+
+  // Collect all unique folder paths
+  const folders = new Set<string>()
+  for (const file of graph.files.values()) {
+    if (file.folder) {
+      folders.add(file.folder)
+      // Also add parent folders
+      const parts = file.folder.split('/')
+      let current = ''
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part
+        folders.add(current)
+      }
+    }
+  }
+
+  // Sort folders alphabetically for consistent color assignment
+  const sortedFolders = Array.from(folders).sort()
+
+  // Assign unique colors using the golden ratio algorithm
+  sortedFolders.forEach((folder, index) => {
+    folderColors.set(folder, getUniqueFolderColor(index))
+  })
+
+  return folderColors
+}
+
 export const useGraphStore = create<GraphState>((set, get) => ({
   // Initial state
   graph: null,
   isLoading: false,
   error: null,
   progress: null,
+  folderColors: new Map(),
   currentLevel: GraphLevel.FILES,
   focusedFileId: null,
   selectedFileId: null,
@@ -175,10 +214,23 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   setGraph: (serialized) => {
     try {
       const graph = deserializeGraph(serialized)
+
+      // Compute unique folder colors
+      const folderColors = computeFolderColors(graph)
+
+      // Update file colors to use the new folder-based colors
+      for (const file of graph.files.values()) {
+        const folderColor = folderColors.get(file.folder)
+        if (folderColor) {
+          file.color = folderColor
+        }
+      }
+
       // Auto-focus on first file if any
       const firstFileId = graph.files.size > 0 ? Array.from(graph.files.keys())[0] : null
       set({
         graph,
+        folderColors,
         error: null,
         focusedFileId: firstFileId,
         currentLevel: GraphLevel.FILES
@@ -187,6 +239,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       console.error('Failed to deserialize graph:', error)
       set({
         graph: null,
+        folderColors: new Map(),
         error: `Failed to process analysis results: ${(error as Error).message}`,
         isLoading: false
       })
@@ -268,6 +321,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       isLoading: false,
       error: null,
       progress: null,
+      folderColors: new Map(),
       currentLevel: GraphLevel.FILES,
       focusedFileId: null,
       selectedFileId: null,
@@ -384,6 +438,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
     const file = graph.files.get(focusedFileId)
     return file?.filePath || null
+  },
+
+  getFolderColor: (folderPath: string) => {
+    const { folderColors } = get()
+    return folderColors.get(folderPath)
   }
 }))
 

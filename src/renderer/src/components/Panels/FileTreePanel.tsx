@@ -16,12 +16,22 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react'
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useGraphStore } from '../../store/graphStore'
 import { useGraphNavigation } from '../../hooks/useGraphNavigation'
-import type { AnalyzedGraph, FileNode } from '../../types/graph.types'
-import { getDarkerColor, getGradientBackground, getColorWithAlpha } from '../../utils/colorUtils'
+import type { AnalyzedGraph } from '../../types/graph.types'
+import { getFolderBackgroundColor } from '../../utils/colorUtils'
 import './FileTreePanel.less'
+
+// Resize constants
+const PANEL_MIN_WIDTH = 200
+const PANEL_MAX_WIDTH = 500
+const PANEL_DEFAULT_WIDTH = 280
+const STORAGE_KEY = 'fileTreePanelWidth'
+
+// Ancestor bar dimensions
+const ANCESTOR_BAR_WIDTH = 4
+const ANCESTOR_BAR_GAP = 2
 
 interface FileTreeNode {
   name: string
@@ -31,6 +41,8 @@ interface FileTreeNode {
   children?: FileTreeNode[]
   color?: string
   fileId?: string
+  depth: number
+  ancestorColors: string[]
 }
 
 interface ContextMenuState {
@@ -70,7 +82,10 @@ function sortTree(node: FileTreeNode): void {
   }
 }
 
-function buildFileTree(graph: AnalyzedGraph | null): FileTreeNode | null {
+function buildFileTree(
+  graph: AnalyzedGraph | null,
+  folderColors: Map<string, string>
+): FileTreeNode | null {
   if (!graph) return null
 
   const rootPathNormalized = normalizePath(graph.rootPath)
@@ -81,7 +96,10 @@ function buildFileTree(graph: AnalyzedGraph | null): FileTreeNode | null {
     path: '',
     fullPath: graph.rootPath,
     type: 'directory',
-    children: []
+    children: [],
+    depth: 0,
+    ancestorColors: [],
+    color: undefined
   }
 
   // Build tree from files
@@ -89,6 +107,7 @@ function buildFileTree(graph: AnalyzedGraph | null): FileTreeNode | null {
     const relativePath = file.relativePath
     const parts = relativePath.split('/').filter(Boolean)
     let current = root
+    const ancestorColorStack: string[] = []
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
@@ -97,45 +116,49 @@ function buildFileTree(graph: AnalyzedGraph | null): FileTreeNode | null {
       const existingChild = current.children?.find((c) => c.name === part)
 
       if (existingChild) {
+        // Add existing directory's color to ancestor stack
+        if (existingChild.color && existingChild.type === 'directory') {
+          ancestorColorStack.push(existingChild.color)
+        }
         current = existingChild
       } else {
+        // Get color from the centralized folderColors map
+        let nodeColor: string | undefined
+        if (!isFile) {
+          // Directory: get color from store's folderColors
+          nodeColor = folderColors.get(nodePath)
+        } else {
+          // File: inherit parent directory's color
+          nodeColor = current.color
+        }
+
         const newNode: FileTreeNode = {
           name: part,
           path: nodePath,
           fullPath: file.filePath.replace(relativePath, nodePath.replace(/\//g, '\\')),
           type: isFile ? 'file' : 'directory',
           children: isFile ? undefined : [],
-          color: isFile ? file.color : undefined,
-          fileId: isFile ? file.id : undefined
+          color: nodeColor,
+          fileId: isFile ? file.id : undefined,
+          depth: i,
+          ancestorColors: [...ancestorColorStack]
         }
         current.children?.push(newNode)
+
+        // Add this directory's color to ancestor stack for its children
+        if (!isFile && nodeColor) {
+          ancestorColorStack.push(nodeColor)
+        }
+
         current = newNode
       }
     }
   }
 
-  // Assign colors to directories based on their children
-  assignDirectoryColors(root, graph)
   sortTree(root)
   return root
 }
 
-function assignDirectoryColors(node: FileTreeNode, graph: AnalyzedGraph): void {
-  if (node.type === 'file' || !node.children) return
-
-  // Process children first
-  for (const child of node.children) {
-    assignDirectoryColors(child, graph)
-  }
-
-  // Get color from first file child or first colored directory child
-  for (const child of node.children) {
-    if (child.color) {
-      node.color = child.color
-      break
-    }
-  }
-}
 
 interface FileTreeItemProps {
   node: FileTreeNode
@@ -184,29 +207,36 @@ function FileTreeItem({
     [node.fullPath, isDirectory, onContextMenu]
   )
 
-  // Generate background style based on file color
+  // Calculate space needed for ancestor bars (last bar is double width)
+  const extraLastBarWidth = node.ancestorColors.length > 0 ? ANCESTOR_BAR_WIDTH : 0
+  const ancestorBarsWidth = node.ancestorColors.length * (ANCESTOR_BAR_WIDTH + ANCESTOR_BAR_GAP) + extraLastBarWidth
+  const baseIndent = 8
+  const toggleWidth = 16
+
+  // Generate background style based on node color
   const getItemBackground = (): string | undefined => {
     if (isFocused && node.color) {
       return node.color
     }
-    if (!isDirectory && node.color) {
-      return getGradientBackground(node.color, 'to right')
+    if (node.color) {
+      // Both files and directories get a light background
+      return getFolderBackgroundColor(node.color)
     }
     return undefined
   }
 
   const itemStyle: React.CSSProperties = {
-    paddingLeft: `${depth * 16 + 8}px`,
-    borderLeft: node.color ? `4px solid ${node.color}` : '4px solid transparent',
+    paddingLeft: `${baseIndent + ancestorBarsWidth + toggleWidth}px`,
     background: getItemBackground(),
-    borderRadius: !isDirectory ? '4px' : undefined,
-    margin: !isDirectory ? '2px 4px 2px 0' : undefined
+    borderRadius: '4px',
+    margin: '1px 4px 1px 0',
+    position: 'relative'
   }
 
   const itemClasses = [
     'file-tree-panel__item',
     isFocused && 'file-tree-panel__item--focused',
-    !isDirectory && node.color && 'file-tree-panel__item--file'
+    isDirectory ? 'file-tree-panel__item--directory' : 'file-tree-panel__item--file'
   ]
     .filter(Boolean)
     .join(' ')
@@ -215,6 +245,34 @@ function FileTreeItem({
   const nameStyle: React.CSSProperties = isFocused && node.color
     ? { color: '#ffffff', fontWeight: 600 }
     : {}
+
+  // Render ancestor color bars
+  const renderAncestorBars = (): JSX.Element | null => {
+    if (node.ancestorColors.length === 0) return null
+
+    return (
+      <div
+        className="file-tree-panel__ancestor-bars"
+        style={{ left: `${baseIndent}px` }}
+      >
+        {node.ancestorColors.map((color, index) => {
+          const isLast = index === node.ancestorColors.length - 1
+          const barWidth = isLast ? ANCESTOR_BAR_WIDTH * 2 : ANCESTOR_BAR_WIDTH
+          return (
+            <div
+              key={`${node.path}-ancestor-${index}`}
+              className="file-tree-panel__ancestor-bar"
+              style={{
+                backgroundColor: color,
+                left: `${index * (ANCESTOR_BAR_WIDTH + ANCESTOR_BAR_GAP)}px`,
+                width: `${barWidth}px`
+              }}
+            />
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <>
@@ -225,6 +283,7 @@ function FileTreeItem({
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
       >
+        {renderAncestorBars()}
         <span className="file-tree-panel__toggle">
           {isDirectory ? (isExpanded ? '\u25BC' : '\u25B6') : ''}
         </span>
@@ -260,12 +319,56 @@ function FileTreeItem({
 }
 
 export function FileTreePanel(): JSX.Element | null {
-  const { graph, focusedFileId } = useGraphStore()
+  const { graph, focusedFileId, folderColors } = useGraphStore()
   const { focusOnFile } = useGraphNavigation()
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['']))
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
-  const fileTree = useMemo(() => buildFileTree(graph), [graph])
+  // Resize state
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored ? Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, parseInt(stored, 10))) : PANEL_DEFAULT_WIDTH
+  })
+  const [isResizing, setIsResizing] = useState(false)
+  const panelRef = useRef<HTMLElement>(null)
+
+  // Persist width to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(panelWidth))
+  }, [panelWidth])
+
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent): void => {
+      const newWidth = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, e.clientX))
+      setPanelWidth(newWidth)
+    }
+
+    const handleMouseUp = (): void => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing])
+
+  const fileTree = useMemo(() => buildFileTree(graph, folderColors), [graph, folderColors])
 
   // Auto-expand to show focused file
   useEffect(() => {
@@ -347,26 +450,42 @@ export function FileTreePanel(): JSX.Element | null {
     }
   }, [contextMenu])
 
+  const panelClassName = `file-tree-panel${isResizing ? ' file-tree-panel--resizing' : ''}`
+
   if (!graph) {
     return (
-      <aside className="file-tree-panel">
+      <aside
+        ref={panelRef}
+        className={panelClassName}
+        style={{ width: `${panelWidth}px` }}
+      >
         <header className="file-tree-panel__header">Arborescence</header>
         <div className="file-tree-panel__empty">Aucun projet analyse</div>
+        <div className="file-tree-panel__resize-handle" onMouseDown={handleResizeStart} />
       </aside>
     )
   }
 
   if (!fileTree) {
     return (
-      <aside className="file-tree-panel">
+      <aside
+        ref={panelRef}
+        className={panelClassName}
+        style={{ width: `${panelWidth}px` }}
+      >
         <header className="file-tree-panel__header">Arborescence</header>
         <div className="file-tree-panel__empty">Aucun fichier detecte</div>
+        <div className="file-tree-panel__resize-handle" onMouseDown={handleResizeStart} />
       </aside>
     )
   }
 
   return (
-    <aside className="file-tree-panel">
+    <aside
+      ref={panelRef}
+      className={panelClassName}
+      style={{ width: `${panelWidth}px` }}
+    >
       <header className="file-tree-panel__header">
         Arborescence
         <span className="file-tree-panel__count">{graph.files.size} fichiers</span>
@@ -383,6 +502,8 @@ export function FileTreePanel(): JSX.Element | null {
           onContextMenu={handleContextMenu}
         />
       </div>
+
+      <div className="file-tree-panel__resize-handle" onMouseDown={handleResizeStart} />
 
       {contextMenu && (
         <div

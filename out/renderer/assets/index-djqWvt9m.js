@@ -23242,6 +23242,48 @@ function calculateLayout(nodes, edges, direction = "TB") {
     };
   });
 }
+function getContrastingTextColor(hslColor) {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return "#000000";
+  const lightness = parseInt(match[3], 10);
+  return lightness > 60 ? "#1f2937" : "#ffffff";
+}
+function getDarkerColor(hslColor, amount = 15) {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return hslColor;
+  const h = parseInt(match[1], 10);
+  const s = parseInt(match[2], 10);
+  const l2 = Math.max(parseInt(match[3], 10) - amount, 20);
+  return `hsl(${h}, ${s}%, ${l2}%)`;
+}
+function getGradientBackground(hslColor, direction = "to right") {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return `linear-gradient(${direction}, #f8fafc, #ffffff)`;
+  const h = parseInt(match[1], 10);
+  const s = parseInt(match[2], 10);
+  const startColor = `hsl(${h}, ${Math.min(s, 40)}%, 95%)`;
+  const endColor = `hsl(${h}, ${Math.min(s, 20)}%, 99%)`;
+  return `linear-gradient(${direction}, ${startColor}, ${endColor})`;
+}
+function getColorWithAlpha(hslColor, alpha) {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return `rgba(100, 116, 139, ${alpha})`;
+  const h = parseInt(match[1], 10);
+  const s = parseInt(match[2], 10);
+  const l2 = parseInt(match[3], 10);
+  return `hsla(${h}, ${s}%, ${l2}%, ${alpha})`;
+}
+function getUniqueFolderColor(folderIndex) {
+  const goldenRatio = 0.618033988749895;
+  const hue = folderIndex * goldenRatio % 1 * 360;
+  return `hsl(${Math.round(hue)}, 65%, 50%)`;
+}
+function getFolderBackgroundColor(hslColor) {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return "hsl(220, 15%, 96%)";
+  const h = parseInt(match[1], 10);
+  return `hsl(${h}, 25%, 94%)`;
+}
 function deserializeGraph(serialized) {
   if (!serialized) {
     throw new Error("No graph data received from analysis");
@@ -23272,12 +23314,33 @@ function deserializeGraph(serialized) {
     }
   };
 }
+function computeFolderColors(graph2) {
+  const folderColors = /* @__PURE__ */ new Map();
+  const folders = /* @__PURE__ */ new Set();
+  for (const file of graph2.files.values()) {
+    if (file.folder) {
+      folders.add(file.folder);
+      const parts = file.folder.split("/");
+      let current = "";
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part;
+        folders.add(current);
+      }
+    }
+  }
+  const sortedFolders = Array.from(folders).sort();
+  sortedFolders.forEach((folder, index2) => {
+    folderColors.set(folder, getUniqueFolderColor(index2));
+  });
+  return folderColors;
+}
 const useGraphStore = create((set2, get2) => ({
   // Initial state
   graph: null,
   isLoading: false,
   error: null,
   progress: null,
+  folderColors: /* @__PURE__ */ new Map(),
   currentLevel: GraphLevel.FILES,
   focusedFileId: null,
   selectedFileId: null,
@@ -23294,9 +23357,17 @@ const useGraphStore = create((set2, get2) => ({
   setGraph: (serialized) => {
     try {
       const graph2 = deserializeGraph(serialized);
+      const folderColors = computeFolderColors(graph2);
+      for (const file of graph2.files.values()) {
+        const folderColor = folderColors.get(file.folder);
+        if (folderColor) {
+          file.color = folderColor;
+        }
+      }
       const firstFileId = graph2.files.size > 0 ? Array.from(graph2.files.keys())[0] : null;
       set2({
         graph: graph2,
+        folderColors,
         error: null,
         focusedFileId: firstFileId,
         currentLevel: GraphLevel.FILES
@@ -23305,6 +23376,7 @@ const useGraphStore = create((set2, get2) => ({
       console.error("Failed to deserialize graph:", error);
       set2({
         graph: null,
+        folderColors: /* @__PURE__ */ new Map(),
         error: `Failed to process analysis results: ${error.message}`,
         isLoading: false
       });
@@ -23370,6 +23442,7 @@ const useGraphStore = create((set2, get2) => ({
     isLoading: false,
     error: null,
     progress: null,
+    folderColors: /* @__PURE__ */ new Map(),
     currentLevel: GraphLevel.FILES,
     focusedFileId: null,
     selectedFileId: null,
@@ -23462,6 +23535,10 @@ const useGraphStore = create((set2, get2) => ({
     if (!graph2 || !focusedFileId) return null;
     const file = graph2.files.get(focusedFileId);
     return file?.filePath || null;
+  },
+  getFolderColor: (folderPath) => {
+    const { folderColors } = get2();
+    return folderColors.get(folderPath);
   }
 }));
 function getFileNodesAndEdges(graph2, focusedFileId, highlightedFileIds) {
@@ -23973,37 +24050,6 @@ function BackButton() {
       ")"
     )
   );
-}
-function getContrastingTextColor(hslColor) {
-  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!match) return "#000000";
-  const lightness = parseInt(match[3], 10);
-  return lightness > 60 ? "#1f2937" : "#ffffff";
-}
-function getDarkerColor(hslColor, amount = 15) {
-  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!match) return hslColor;
-  const h = parseInt(match[1], 10);
-  const s = parseInt(match[2], 10);
-  const l2 = Math.max(parseInt(match[3], 10) - amount, 20);
-  return `hsl(${h}, ${s}%, ${l2}%)`;
-}
-function getGradientBackground(hslColor, direction = "to right") {
-  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!match) return `linear-gradient(${direction}, #f8fafc, #ffffff)`;
-  const h = parseInt(match[1], 10);
-  const s = parseInt(match[2], 10);
-  const startColor = `hsl(${h}, ${Math.min(s, 40)}%, 95%)`;
-  const endColor = `hsl(${h}, ${Math.min(s, 20)}%, 99%)`;
-  return `linear-gradient(${direction}, ${startColor}, ${endColor})`;
-}
-function getColorWithAlpha(hslColor, alpha) {
-  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!match) return `rgba(100, 116, 139, ${alpha})`;
-  const h = parseInt(match[1], 10);
-  const s = parseInt(match[2], 10);
-  const l2 = parseInt(match[3], 10);
-  return `hsla(${h}, ${s}%, ${l2}%, ${alpha})`;
 }
 function FileNodeComponent({ data, selected: selected2 }) {
   const { file, isPrimary, isHighlighted, importCount, dependentCount } = data;
@@ -24719,6 +24765,12 @@ function CodeItemDetailsPanel({
     )
   ), /* @__PURE__ */ React$2.createElement("div", { className: "node-details-panel__content" }, /* @__PURE__ */ React$2.createElement("section", { className: "node-details-panel__section" }, /* @__PURE__ */ React$2.createElement("h3", { className: "node-details-panel__section-title" }, "Fichier"), /* @__PURE__ */ React$2.createElement("code", { className: "node-details-panel__file-path" }, file.relativePath, ":", codeItem.line)), /* @__PURE__ */ React$2.createElement("section", { className: "node-details-panel__section" }, /* @__PURE__ */ React$2.createElement("h3", { className: "node-details-panel__section-title" }, "Statut"), /* @__PURE__ */ React$2.createElement("div", { className: "node-details-panel__badges" }, codeItem.isExported ? /* @__PURE__ */ React$2.createElement("span", { className: "node-details-panel__status-badge node-details-panel__status-badge--exported" }, "Exporté") : /* @__PURE__ */ React$2.createElement("span", { className: "node-details-panel__status-badge node-details-panel__status-badge--private" }, "Privé"), codeItem.isDefault && /* @__PURE__ */ React$2.createElement("span", { className: "node-details-panel__status-badge node-details-panel__status-badge--default" }, "Default"))), codeItem.signature && /* @__PURE__ */ React$2.createElement("section", { className: "node-details-panel__section" }, /* @__PURE__ */ React$2.createElement("h3", { className: "node-details-panel__section-title" }, "Signature"), /* @__PURE__ */ React$2.createElement("code", { className: "node-details-panel__signature" }, codeItem.signature)), /* @__PURE__ */ React$2.createElement("section", { className: "node-details-panel__section" }, /* @__PURE__ */ React$2.createElement("h3", { className: "node-details-panel__section-title" }, "Ligne"), /* @__PURE__ */ React$2.createElement("p", { className: "node-details-panel__value" }, codeItem.line))));
 }
+const PANEL_MIN_WIDTH = 200;
+const PANEL_MAX_WIDTH = 500;
+const PANEL_DEFAULT_WIDTH = 280;
+const STORAGE_KEY = "fileTreePanelWidth";
+const ANCESTOR_BAR_WIDTH = 4;
+const ANCESTOR_BAR_GAP = 2;
 function normalizePath(path) {
   return path.replace(/\\/g, "/");
 }
@@ -24744,7 +24796,7 @@ function sortTree(node) {
     sortTree(child);
   }
 }
-function buildFileTree(graph2) {
+function buildFileTree(graph2, folderColors) {
   if (!graph2) return null;
   const rootPathNormalized = normalizePath(graph2.rootPath);
   const projectName = rootPathNormalized.split("/").filter(Boolean).pop() || graph2.name;
@@ -24753,49 +24805,54 @@ function buildFileTree(graph2) {
     path: "",
     fullPath: graph2.rootPath,
     type: "directory",
-    children: []
+    children: [],
+    depth: 0,
+    ancestorColors: [],
+    color: void 0
   };
   for (const file of graph2.files.values()) {
     const relativePath = file.relativePath;
     const parts = relativePath.split("/").filter(Boolean);
     let current = root2;
+    const ancestorColorStack = [];
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const isFile = i === parts.length - 1;
       const nodePath = parts.slice(0, i + 1).join("/");
       const existingChild = current.children?.find((c) => c.name === part);
       if (existingChild) {
+        if (existingChild.color && existingChild.type === "directory") {
+          ancestorColorStack.push(existingChild.color);
+        }
         current = existingChild;
       } else {
+        let nodeColor;
+        if (!isFile) {
+          nodeColor = folderColors.get(nodePath);
+        } else {
+          nodeColor = current.color;
+        }
         const newNode = {
           name: part,
           path: nodePath,
           fullPath: file.filePath.replace(relativePath, nodePath.replace(/\//g, "\\")),
           type: isFile ? "file" : "directory",
           children: isFile ? void 0 : [],
-          color: isFile ? file.color : void 0,
-          fileId: isFile ? file.id : void 0
+          color: nodeColor,
+          fileId: isFile ? file.id : void 0,
+          depth: i,
+          ancestorColors: [...ancestorColorStack]
         };
         current.children?.push(newNode);
+        if (!isFile && nodeColor) {
+          ancestorColorStack.push(nodeColor);
+        }
         current = newNode;
       }
     }
   }
-  assignDirectoryColors(root2);
   sortTree(root2);
   return root2;
-}
-function assignDirectoryColors(node, graph2) {
-  if (node.type === "file" || !node.children) return;
-  for (const child of node.children) {
-    assignDirectoryColors(child);
-  }
-  for (const child of node.children) {
-    if (child.color) {
-      node.color = child.color;
-      break;
-    }
-  }
 }
 function FileTreeItem({
   node,
@@ -24829,28 +24886,58 @@ function FileTreeItem({
     },
     [node.fullPath, isDirectory, onContextMenu]
   );
+  const extraLastBarWidth = node.ancestorColors.length > 0 ? ANCESTOR_BAR_WIDTH : 0;
+  const ancestorBarsWidth = node.ancestorColors.length * (ANCESTOR_BAR_WIDTH + ANCESTOR_BAR_GAP) + extraLastBarWidth;
+  const baseIndent = 8;
+  const toggleWidth = 16;
   const getItemBackground = () => {
     if (isFocused && node.color) {
       return node.color;
     }
-    if (!isDirectory && node.color) {
-      return getGradientBackground(node.color, "to right");
+    if (node.color) {
+      return getFolderBackgroundColor(node.color);
     }
     return void 0;
   };
   const itemStyle = {
-    paddingLeft: `${depth * 16 + 8}px`,
-    borderLeft: node.color ? `4px solid ${node.color}` : "4px solid transparent",
+    paddingLeft: `${baseIndent + ancestorBarsWidth + toggleWidth}px`,
     background: getItemBackground(),
-    borderRadius: !isDirectory ? "4px" : void 0,
-    margin: !isDirectory ? "2px 4px 2px 0" : void 0
+    borderRadius: "4px",
+    margin: "1px 4px 1px 0",
+    position: "relative"
   };
   const itemClasses = [
     "file-tree-panel__item",
     isFocused && "file-tree-panel__item--focused",
-    !isDirectory && node.color && "file-tree-panel__item--file"
+    isDirectory ? "file-tree-panel__item--directory" : "file-tree-panel__item--file"
   ].filter(Boolean).join(" ");
   const nameStyle = isFocused && node.color ? { color: "#ffffff", fontWeight: 600 } : {};
+  const renderAncestorBars = () => {
+    if (node.ancestorColors.length === 0) return null;
+    return /* @__PURE__ */ React$2.createElement(
+      "div",
+      {
+        className: "file-tree-panel__ancestor-bars",
+        style: { left: `${baseIndent}px` }
+      },
+      node.ancestorColors.map((color2, index2) => {
+        const isLast = index2 === node.ancestorColors.length - 1;
+        const barWidth = isLast ? ANCESTOR_BAR_WIDTH * 2 : ANCESTOR_BAR_WIDTH;
+        return /* @__PURE__ */ React$2.createElement(
+          "div",
+          {
+            key: `${node.path}-ancestor-${index2}`,
+            className: "file-tree-panel__ancestor-bar",
+            style: {
+              backgroundColor: color2,
+              left: `${index2 * (ANCESTOR_BAR_WIDTH + ANCESTOR_BAR_GAP)}px`,
+              width: `${barWidth}px`
+            }
+          }
+        );
+      })
+    );
+  };
   return /* @__PURE__ */ React$2.createElement(React$2.Fragment, null, /* @__PURE__ */ React$2.createElement(
     "div",
     {
@@ -24860,6 +24947,7 @@ function FileTreeItem({
       onDoubleClick: handleDoubleClick,
       onContextMenu: handleContextMenu
     },
+    renderAncestorBars(),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__toggle" }, isDirectory ? isExpanded ? "▼" : "▶" : ""),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__icon" }, isDirectory ? "📁" : "📄"),
     /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__name", style: nameStyle, title: node.name }, node.name),
@@ -24880,11 +24968,44 @@ function FileTreeItem({
   ))));
 }
 function FileTreePanel() {
-  const { graph: graph2, focusedFileId } = useGraphStore();
+  const { graph: graph2, focusedFileId, folderColors } = useGraphStore();
   const { focusOnFile } = useGraphNavigation();
   const [expandedPaths, setExpandedPaths] = reactExports.useState(/* @__PURE__ */ new Set([""]));
   const [contextMenu, setContextMenu] = reactExports.useState(null);
-  const fileTree = reactExports.useMemo(() => buildFileTree(graph2), [graph2]);
+  const [panelWidth, setPanelWidth] = reactExports.useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, parseInt(stored, 10))) : PANEL_DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = reactExports.useState(false);
+  const panelRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(panelWidth));
+  }, [panelWidth]);
+  const handleResizeStart = reactExports.useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+  reactExports.useEffect(() => {
+    if (!isResizing) return;
+    const handleMouseMove = (e) => {
+      const newWidth = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, e.clientX));
+      setPanelWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing]);
+  const fileTree = reactExports.useMemo(() => buildFileTree(graph2, folderColors), [graph2, folderColors]);
   reactExports.useEffect(() => {
     if (focusedFileId && graph2) {
       const file = graph2.files.get(focusedFileId);
@@ -24954,33 +25075,65 @@ function FileTreePanel() {
       setContextMenu(null);
     }
   }, [contextMenu]);
+  const panelClassName = `file-tree-panel${isResizing ? " file-tree-panel--resizing" : ""}`;
   if (!graph2) {
-    return /* @__PURE__ */ React$2.createElement("aside", { className: "file-tree-panel" }, /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence"), /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__empty" }, "Aucun projet analyse"));
+    return /* @__PURE__ */ React$2.createElement(
+      "aside",
+      {
+        ref: panelRef,
+        className: panelClassName,
+        style: { width: `${panelWidth}px` }
+      },
+      /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence"),
+      /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__empty" }, "Aucun projet analyse"),
+      /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__resize-handle", onMouseDown: handleResizeStart })
+    );
   }
   if (!fileTree) {
-    return /* @__PURE__ */ React$2.createElement("aside", { className: "file-tree-panel" }, /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence"), /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__empty" }, "Aucun fichier detecte"));
+    return /* @__PURE__ */ React$2.createElement(
+      "aside",
+      {
+        ref: panelRef,
+        className: panelClassName,
+        style: { width: `${panelWidth}px` }
+      },
+      /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence"),
+      /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__empty" }, "Aucun fichier detecte"),
+      /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__resize-handle", onMouseDown: handleResizeStart })
+    );
   }
-  return /* @__PURE__ */ React$2.createElement("aside", { className: "file-tree-panel" }, /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence", /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__count" }, graph2.files.size, " fichiers")), /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__content" }, /* @__PURE__ */ React$2.createElement(
-    FileTreeItem,
+  return /* @__PURE__ */ React$2.createElement(
+    "aside",
     {
-      node: fileTree,
-      depth: 0,
-      expandedPaths,
-      focusedFileId,
-      onToggle: handleToggle,
-      onFileClick: handleFileClick,
-      onFileDoubleClick: handleFileDoubleClick,
-      onContextMenu: handleContextMenu
-    }
-  )), contextMenu && /* @__PURE__ */ React$2.createElement(
-    "div",
-    {
-      className: "file-tree-panel__context-menu",
-      style: { top: contextMenu.y, left: contextMenu.x }
+      ref: panelRef,
+      className: panelClassName,
+      style: { width: `${panelWidth}px` }
     },
-    !contextMenu.isDirectory && /* @__PURE__ */ React$2.createElement("button", { onClick: handleOpenFile }, "Ouvrir le fichier"),
-    /* @__PURE__ */ React$2.createElement("button", { onClick: handleOpenFolder }, "Ouvrir le dossier")
-  ));
+    /* @__PURE__ */ React$2.createElement("header", { className: "file-tree-panel__header" }, "Arborescence", /* @__PURE__ */ React$2.createElement("span", { className: "file-tree-panel__count" }, graph2.files.size, " fichiers")),
+    /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__content" }, /* @__PURE__ */ React$2.createElement(
+      FileTreeItem,
+      {
+        node: fileTree,
+        depth: 0,
+        expandedPaths,
+        focusedFileId,
+        onToggle: handleToggle,
+        onFileClick: handleFileClick,
+        onFileDoubleClick: handleFileDoubleClick,
+        onContextMenu: handleContextMenu
+      }
+    )),
+    /* @__PURE__ */ React$2.createElement("div", { className: "file-tree-panel__resize-handle", onMouseDown: handleResizeStart }),
+    contextMenu && /* @__PURE__ */ React$2.createElement(
+      "div",
+      {
+        className: "file-tree-panel__context-menu",
+        style: { top: contextMenu.y, left: contextMenu.x }
+      },
+      !contextMenu.isDirectory && /* @__PURE__ */ React$2.createElement("button", { onClick: handleOpenFile }, "Ouvrir le fichier"),
+      /* @__PURE__ */ React$2.createElement("button", { onClick: handleOpenFolder }, "Ouvrir le dossier")
+    )
+  );
 }
 function ErrorDisplay() {
   const error = useGraphStore((state) => state.error);

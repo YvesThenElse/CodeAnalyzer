@@ -1,13 +1,19 @@
 @import '../../styles/variables.less';
 
 .file-tree-panel {
-  width: 280px;
+  min-width: 200px;
+  max-width: 500px;
   flex-shrink: 0;
   background: @bg-secondary;
   border-right: 1px solid @border-color;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+
+  &--resizing {
+    user-select: none;
+  }
 
   &__header {
     padding: @spacing-md;
@@ -21,6 +27,49 @@
     flex: 1;
     overflow-y: auto;
     padding: @spacing-xs 0;
+  }
+
+  &__resize-handle {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 4px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 10;
+    transition: background @transition-fast;
+
+    &:hover {
+      background: @accent-color;
+    }
+
+    .file-tree-panel--resizing & {
+      background: @accent-color;
+    }
+  }
+
+  &__ancestor-bars {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: stretch;
+    pointer-events: none;
+  }
+
+  &__ancestor-bar {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    width: 4px;
+    border-radius: 2px;
+    opacity: 0.8;
+    transition: opacity @transition-fast;
+
+    .file-tree-panel__item:hover & {
+      opacity: 1;
+    }
   }
 
   &__empty {
@@ -39,19 +88,20 @@
     user-select: none;
     font-size: @font-size-sm;
     transition: all @transition-fast;
+    position: relative;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.05);
+      filter: brightness(0.96);
       transform: translateX(2px);
     }
 
-    &--file {
-      // Files have colored gradient backgrounds
+    &--file,
+    &--directory {
+      // Both files and directories have colored backgrounds
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
       &:hover {
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        filter: brightness(0.98);
       }
     }
 
@@ -110,6 +160,7 @@
     text-align: center;
     color: @text-muted;
     flex-shrink: 0;
+    z-index: 1;
   }
 
   &__icon {
@@ -117,6 +168,7 @@
     text-align: center;
     font-size: 12px;
     flex-shrink: 0;
+    z-index: 1;
   }
 
   &__name {
@@ -125,6 +177,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: @text-dark;
+    z-index: 1;
   }
 
   &__indicator {

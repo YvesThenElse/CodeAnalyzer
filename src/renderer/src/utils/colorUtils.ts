@@ -30,6 +30,12 @@ const FOLDER_BASE_COLORS = [
   { hue: 75, name: 'lime' }      // Lime
 ]
 
+// Hue shift per subdirectory level (creates distinct colors per level)
+const HUE_SHIFT_PER_LEVEL = 25
+
+// Saturation decreases with depth for visual hierarchy
+const LEVEL_SATURATIONS = [75, 65, 55, 48, 42, 38, 35]
+
 /**
  * Generate colors for all folders based on their root folder and depth
  */
@@ -239,4 +245,28 @@ export function getColorWithAlpha(hslColor: string, alpha: number): string {
   const l = parseInt(match[3], 10)
 
   return `hsla(${h}, ${s}%, ${l}%, ${alpha})`
+}
+
+/**
+ * Generate a unique color for a folder based on its global index.
+ * Uses golden ratio for optimal color distribution across the color wheel.
+ */
+export function getUniqueFolderColor(folderIndex: number): string {
+  const goldenRatio = 0.618033988749895
+  const hue = ((folderIndex * goldenRatio) % 1) * 360
+
+  return `hsl(${Math.round(hue)}, 65%, 50%)`
+}
+
+/**
+ * Get a light background color from an HSL color (for folder/file backgrounds)
+ */
+export function getFolderBackgroundColor(hslColor: string): string {
+  const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
+  if (!match) return 'hsl(220, 15%, 96%)'
+
+  const h = parseInt(match[1], 10)
+
+  // Light background: low saturation, high lightness
+  return `hsl(${h}, 25%, 94%)`
 }
