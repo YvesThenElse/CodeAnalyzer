@@ -149,12 +149,55 @@ The analyzer skips these directories:
 | Select node | Single click |
 | Back | Back button or breadcrumb |
 
+## LLM Integration
+
+CodeAnalyzer can generate AI-powered descriptions for each file using various LLM providers.
+
+### Supported Providers
+
+| Provider | Configuration | Parallelization |
+|----------|---------------|-----------------|
+| **OpenAI** | API Key required | Supported (3 concurrent requests) |
+| **Anthropic** | API Key required | Supported (3 concurrent requests) |
+| **Ollama** | Local URL (default: `http://localhost:11434`) | Not effective* |
+
+*\*Ollama processes requests sequentially (single-threaded inference). Parallel requests are queued server-side, so parallelization provides no speed benefit.*
+
+### Configuration
+
+1. Click the gear icon in the header (requires a loaded project)
+2. Select your LLM provider
+3. Enter your API key (or Ollama URL)
+4. Choose the model
+5. Test the connection
+6. Save the configuration
+
+Configuration is stored per-project in `.codeanalyzer/llm-config.json`.
+
+### Description Generation
+
+- Descriptions are generated in parallel (3 concurrent API calls for OpenAI/Anthropic)
+- Each description appears in real-time as soon as it's ready
+- Descriptions are cached in `.codeanalyzer/description-cache.json`
+- Cache is invalidated when file content changes (hash-based)
+- Use "Refresh" to regenerate all descriptions
+
+### Technical Details
+
+The parallelization uses a worker pool pattern:
+- A queue holds all files to process
+- Up to 3 workers run concurrently
+- When a worker finishes, it picks the next file from the queue
+- Each completed description is sent immediately to the UI via IPC (`llm:descriptionReady`)
+- Cache is saved every 5 files to prevent data loss on interruption
+
 ## Roadmap
 
 ### Phase 0 - AI Improvements
-- [ ] Worker for generating description for each file (provide file + imports + used) 
+- [x] Worker for generating description for each file (provide file + imports + used)
 - [ ] Worker for generating methods description
-- [ ] LLM API key configuration
+- [x] LLM API key configuration (OpenAI, Anthropic, Ollama)
+- [x] Parallel description generation with real-time UI updates
 - [ ] Context menu - Open file in editor (external?)
 - [ ] Context menu - Display code logic
 

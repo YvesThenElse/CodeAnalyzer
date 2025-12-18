@@ -78,6 +78,16 @@ const electronAPI = {
       return () => {
         electron.ipcRenderer.removeListener("llm:error", handler);
       };
+    },
+    // Listen to individual description ready (with cleanup function)
+    onDescriptionReady: (callback) => {
+      const handler = (_event, data) => {
+        callback(data);
+      };
+      electron.ipcRenderer.on("llm:descriptionReady", handler);
+      return () => {
+        electron.ipcRenderer.removeListener("llm:descriptionReady", handler);
+      };
     }
   }
 };

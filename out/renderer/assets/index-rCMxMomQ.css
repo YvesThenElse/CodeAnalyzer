@@ -1214,6 +1214,33 @@ svg.react-flow__connectionline {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.header__llm-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  padding: 4px 8px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.header__llm-error:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+.header__llm-error-text {
+  font-weight: 500;
+  color: #fca5a5;
+}
+.header__llm-error-message {
+  opacity: 0.9;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fecaca;
+}
 .btn {
   display: inline-flex;
   align-items: center;

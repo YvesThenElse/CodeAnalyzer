@@ -202,18 +202,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       return
     }
 
-    // Generate descriptions for each file
+    // Generate descriptions in parallel with concurrency limit
     const total = filesToGenerate.length
-    for (let i = 0; i < filesToGenerate.length; i++) {
-      const file = filesToGenerate[i]
-      const sourceFile = sourceFiles.find(f => f.relativePath === file.id)!
+    const CONCURRENCY = 3
+    let completedCount = 0
+    let saveCounter = 0
 
-      mainWindow.webContents.send('llm:progress', {
-        current: i + 1,
-        total,
-        currentFile: file.id,
-        phase: 'generating' as const
-      })
+    await processWithConcurrency(filesToGenerate, CONCURRENCY, async (file) => {
+      const sourceFile = sourceFiles.find(f => f.relativePath === file.id)!
 
       try {
         const context: FileContext = {
@@ -221,12 +217,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
           relativePath: sourceFile.relativePath,
           content: sourceFile.content,
           imports: sourceFile.imports,
-          usedBy: [], // TODO: Could be populated from graph analysis
+          usedBy: [],
           language: getLanguageFromPath(sourceFile.relativePath)
         }
 
         const description = await generateFileDescription(config, context)
 
+        // Update cache
         setCachedDescription(cache, file.id, {
           hash: file.hash,
           short: description.short,
@@ -234,17 +231,41 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
           model: config.model,
           generatedAt: new Date().toISOString()
         })
+
+        // Send description immediately to renderer
+        mainWindow.webContents.send('llm:descriptionReady', {
+          fileId: file.id,
+          description: { short: description.short, long: description.long }
+        })
+
+        completedCount++
+        saveCounter++
+
+        // Update progress
+        mainWindow.webContents.send('llm:progress', {
+          current: completedCount,
+          total,
+          currentFile: file.id,
+          phase: 'generating' as const
+        })
+
+        // Save cache periodically (every 5 files)
+        if (saveCounter >= 5) {
+          saveDescriptionCache(projectPath, cache)
+          saveCounter = 0
+        }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
+        completedCount++
+        const rawMessage = error instanceof Error ? error.message : 'Unknown error'
+        const message = formatLLMError(rawMessage)
         mainWindow.webContents.send('llm:error', {
           message,
           file: file.id
         })
-        // Continue with next file
       }
-    }
+    })
 
-    // Save cache
+    // Final save
     mainWindow.webContents.send('llm:progress', {
       current: total,
       total,
@@ -255,6 +276,106 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     saveDescriptionCache(projectPath, cache)
     mainWindow.webContents.send('llm:complete', cacheToDescriptionRecord(cache))
   })
+}
+
+// ===== CONCURRENCY UTILITY =====
+
+async function processWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  processor: (item: T) => Promise<void>
+): Promise<void> {
+  const queue = [...items]
+  const active = new Set<Promise<void>>()
+
+  function startNext(): void {
+    if (queue.length === 0) return
+
+    const item = queue.shift()!
+    const promise = processor(item).finally(() => {
+      active.delete(promise)
+    })
+    active.add(promise)
+  }
+
+  // Start initial batch (synchronously, no await)
+  const initialBatch = Math.min(concurrency, items.length)
+  for (let i = 0; i < initialBatch; i++) {
+    startNext()
+  }
+
+  // Process remaining items as slots become available
+  while (active.size > 0) {
+    await Promise.race(active)
+    // Fill up slots after one completes
+    while (active.size < concurrency && queue.length > 0) {
+      startNext()
+    }
+  }
+}
+
+// ===== ERROR FORMATTING =====
+
+function formatLLMError(rawMessage: string): string {
+  const lower = rawMessage.toLowerCase()
+
+  // Authentication errors
+  if (lower.includes('401') || lower.includes('invalid_api_key') || lower.includes('incorrect api key')) {
+    return 'Clé API invalide. Vérifiez votre configuration.'
+  }
+
+  // Authorization errors
+  if (lower.includes('403') || lower.includes('forbidden')) {
+    return 'Accès refusé. Vérifiez les permissions de votre clé API.'
+  }
+
+  // Quota/billing errors
+  if (lower.includes('429') || lower.includes('rate_limit') || lower.includes('rate limit')) {
+    return 'Limite de requêtes atteinte. Réessayez plus tard.'
+  }
+
+  if (lower.includes('insufficient_quota') || lower.includes('quota') || lower.includes('billing')) {
+    return 'Quota épuisé ou problème de facturation. Vérifiez votre compte.'
+  }
+
+  if (lower.includes('credit') || lower.includes('payment')) {
+    return 'Crédit insuffisant. Rechargez votre compte.'
+  }
+
+  // Server errors
+  if (lower.includes('overloaded') || lower.includes('503') || lower.includes('service unavailable')) {
+    return 'Service surchargé. Réessayez plus tard.'
+  }
+
+  if (lower.includes('500') || lower.includes('internal server error')) {
+    return 'Erreur serveur. Réessayez plus tard.'
+  }
+
+  // Network errors
+  if (lower.includes('econnrefused') || lower.includes('connection refused')) {
+    return 'Connexion refusée. Vérifiez que le service est démarré (Ollama?).'
+  }
+
+  if (lower.includes('enotfound') || lower.includes('getaddrinfo')) {
+    return 'Serveur introuvable. Vérifiez votre connexion internet.'
+  }
+
+  if (lower.includes('timeout') || lower.includes('etimedout')) {
+    return 'Délai d\'attente dépassé. Réessayez.'
+  }
+
+  // Model errors
+  if (lower.includes('model') && (lower.includes('not found') || lower.includes('does not exist'))) {
+    return 'Modèle non trouvé. Vérifiez le nom du modèle.'
+  }
+
+  // Context length errors
+  if (lower.includes('context_length') || lower.includes('token') && lower.includes('limit')) {
+    return 'Fichier trop volumineux pour le modèle.'
+  }
+
+  // Return original message if no match (truncated if too long)
+  return rawMessage.length > 100 ? rawMessage.substring(0, 100) + '...' : rawMessage
 }
 
 // ===== HELPER FUNCTIONS =====

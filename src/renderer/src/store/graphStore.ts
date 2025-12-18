@@ -63,6 +63,7 @@ interface GraphState {
   descriptions: Record<string, FileDescription>
   llmLoading: boolean
   llmProgress: LLMProgress | null
+  llmError: string | null
 
   // Actions
   setGraph: (graph: SerializedAnalyzedGraph) => void
@@ -90,8 +91,10 @@ interface GraphState {
   // LLM Actions
   setLLMConfig: (config: LLMConfig | null) => void
   setDescriptions: (descriptions: Record<string, FileDescription>) => void
+  addDescription: (fileId: string, description: FileDescription) => void
   setLLMLoading: (loading: boolean) => void
   setLLMProgress: (progress: LLMProgress | null) => void
+  setLLMError: (error: string | null) => void
   getFileDescription: (fileId: string) => FileDescription | null
 
   // Selectors
@@ -166,6 +169,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   descriptions: {},
   llmLoading: false,
   llmProgress: null,
+  llmError: null,
 
   // Actions
   setGraph: (serialized) => {
@@ -274,14 +278,20 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       llmConfig: null,
       descriptions: {},
       llmLoading: false,
-      llmProgress: null
+      llmProgress: null,
+      llmError: null
     }),
 
   // LLM Actions
   setLLMConfig: (config) => set({ llmConfig: config }),
   setDescriptions: (descriptions) => set({ descriptions }),
+  addDescription: (fileId, description) =>
+    set((state) => ({
+      descriptions: { ...state.descriptions, [fileId]: description }
+    })),
   setLLMLoading: (loading) => set({ llmLoading: loading }),
   setLLMProgress: (progress) => set({ llmProgress: progress }),
+  setLLMError: (error) => set({ llmError: error, llmLoading: false }),
 
   getFileDescription: (fileId) => {
     const { descriptions } = get()

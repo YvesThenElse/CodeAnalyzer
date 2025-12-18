@@ -51,6 +51,7 @@ export interface ElectronAPI {
     onProgress: (callback: (progress: LLMProgress) => void) => () => void
     onComplete: (callback: (descriptions: Record<string, FileDescription>) => void) => () => void
     onError: (callback: (error: { message: string; file?: string }) => void) => () => void
+    onDescriptionReady: (callback: (data: { fileId: string; description: FileDescription }) => void) => () => void
   }
 }
 

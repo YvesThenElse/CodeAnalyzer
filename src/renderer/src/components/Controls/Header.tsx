@@ -32,10 +32,14 @@ export function Header(): JSX.Element {
     llmConfig,
     llmLoading,
     llmProgress,
+    llmError,
+    descriptions,
     setLLMConfig,
     setLLMLoading,
     setLLMProgress,
-    setDescriptions
+    setLLMError,
+    setDescriptions,
+    addDescription
   } = useGraphStore()
 
   const [configModalOpen, setConfigModalOpen] = useState(false)
@@ -54,15 +58,40 @@ export function Header(): JSX.Element {
 
     const unsubError = window.electronAPI.llm.onError((error) => {
       console.warn('LLM error:', error.message, error.file)
-      // Continue with other files, don't stop loading
+
+      // Check if it's a critical error (API key, quota, auth issues)
+      const isCriticalError =
+        error.message.includes('401') ||
+        error.message.includes('403') ||
+        error.message.includes('429') ||
+        error.message.includes('insufficient_quota') ||
+        error.message.includes('invalid_api_key') ||
+        error.message.includes('authentication') ||
+        error.message.includes('credit') ||
+        error.message.includes('billing') ||
+        error.message.includes('rate_limit') ||
+        error.message.includes('overloaded')
+
+      if (isCriticalError) {
+        // Stop generation and show error
+        setLLMError(error.message)
+        setLLMProgress(null)
+      }
+      // For file-specific errors, continue with other files
+    })
+
+    // Listen for individual descriptions as they become ready
+    const unsubReady = window.electronAPI.llm.onDescriptionReady(({ fileId, description }) => {
+      addDescription(fileId, description)
     })
 
     return () => {
       unsubProgress()
       unsubComplete()
       unsubError()
+      unsubReady()
     }
-  }, [setLLMProgress, setDescriptions, setLLMLoading])
+  }, [setLLMProgress, setDescriptions, setLLMLoading, setLLMError, addDescription])
 
   // Load LLM config and descriptions when graph changes
   useEffect(() => {
@@ -89,10 +118,11 @@ export function Header(): JSX.Element {
     async (forceRegenerate = false) => {
       if (!graph?.rootPath || !llmConfig) return
 
+      setLLMError(null) // Clear previous error
       setLLMLoading(true)
       await window.electronAPI.llm.generateDescriptions(graph.rootPath, forceRegenerate)
     },
-    [graph?.rootPath, llmConfig, setLLMLoading]
+    [graph?.rootPath, llmConfig, setLLMLoading, setLLMError]
   )
 
   const handleSelectDirectory = useCallback(async () => {
@@ -221,18 +251,28 @@ export function Header(): JSX.Element {
 
       {graph && (
         <div className="header__info">
-          <span className="header__project-name">{graph.name}</span>
           <span className="header__file-count">{graph.files.size} fichiers</span>
         </div>
       )}
 
-      {llmProgress && (
+      {llmError ? (
+        <div className="header__llm-error" onClick={() => setLLMError(null)} title="Cliquer pour fermer">
+          <span className="header__llm-error-text">IA: Erreur</span>
+          <span className="header__llm-error-message">{llmError}</span>
+        </div>
+      ) : llmProgress ? (
         <div className="header__llm-progress">
           <span className="header__llm-progress-text">
             IA: {llmProgress.current}/{llmProgress.total}
           </span>
           <span className="header__llm-progress-file">{llmProgress.currentFile}</span>
         </div>
+      ) : (
+        llmConfig && !llmLoading && Object.keys(descriptions).length > 0 && (
+          <div className="header__llm-progress">
+            <span className="header__llm-progress-text">IA: Done</span>
+          </div>
+        )
       )}
 
       <LLMConfigModal open={configModalOpen} onClose={() => setConfigModalOpen(false)} />

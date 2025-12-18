@@ -64,6 +64,37 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  &__llm-error {
+    display: flex;
+    align-items: center;
+    gap: @spacing-sm;
+    margin-left: @spacing-md;
+    padding: @spacing-xs @spacing-sm;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 4px;
+    font-size: @font-size-sm;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+  }
+
+  &__llm-error-text {
+    font-weight: @font-weight-medium;
+    color: #fca5a5;
+  }
+
+  &__llm-error-message {
+    opacity: 0.9;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fecaca;
+  }
 }
 
 // ===== BUTTONS =====

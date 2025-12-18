@@ -23289,6 +23289,7 @@ const useGraphStore = create((set2, get2) => ({
   descriptions: {},
   llmLoading: false,
   llmProgress: null,
+  llmError: null,
   // Actions
   setGraph: (serialized) => {
     try {
@@ -23379,13 +23380,18 @@ const useGraphStore = create((set2, get2) => ({
     llmConfig: null,
     descriptions: {},
     llmLoading: false,
-    llmProgress: null
+    llmProgress: null,
+    llmError: null
   }),
   // LLM Actions
   setLLMConfig: (config) => set2({ llmConfig: config }),
   setDescriptions: (descriptions) => set2({ descriptions }),
+  addDescription: (fileId, description) => set2((state) => ({
+    descriptions: { ...state.descriptions, [fileId]: description }
+  })),
   setLLMLoading: (loading) => set2({ llmLoading: loading }),
   setLLMProgress: (progress) => set2({ llmProgress: progress }),
+  setLLMError: (error) => set2({ llmError: error, llmLoading: false }),
   getFileDescription: (fileId) => {
     const { descriptions } = get2();
     return descriptions[fileId] || null;
@@ -23687,37 +23693,50 @@ function Header() {
     llmConfig,
     llmLoading,
     llmProgress,
+    llmError,
+    descriptions,
     setLLMConfig,
     setLLMLoading,
     setLLMProgress,
-    setDescriptions
+    setLLMError,
+    setDescriptions,
+    addDescription
   } = useGraphStore();
   const [configModalOpen, setConfigModalOpen] = reactExports.useState(false);
   reactExports.useEffect(() => {
     const unsubProgress = window.electronAPI.llm.onProgress((progress) => {
       setLLMProgress(progress);
     });
-    const unsubComplete = window.electronAPI.llm.onComplete((descriptions) => {
-      setDescriptions(descriptions);
+    const unsubComplete = window.electronAPI.llm.onComplete((descriptions2) => {
+      setDescriptions(descriptions2);
       setLLMLoading(false);
       setLLMProgress(null);
     });
     const unsubError = window.electronAPI.llm.onError((error) => {
       console.warn("LLM error:", error.message, error.file);
+      const isCriticalError = error.message.includes("401") || error.message.includes("403") || error.message.includes("429") || error.message.includes("insufficient_quota") || error.message.includes("invalid_api_key") || error.message.includes("authentication") || error.message.includes("credit") || error.message.includes("billing") || error.message.includes("rate_limit") || error.message.includes("overloaded");
+      if (isCriticalError) {
+        setLLMError(error.message);
+        setLLMProgress(null);
+      }
+    });
+    const unsubReady = window.electronAPI.llm.onDescriptionReady(({ fileId, description }) => {
+      addDescription(fileId, description);
     });
     return () => {
       unsubProgress();
       unsubComplete();
       unsubError();
+      unsubReady();
     };
-  }, [setLLMProgress, setDescriptions, setLLMLoading]);
+  }, [setLLMProgress, setDescriptions, setLLMLoading, setLLMError, addDescription]);
   reactExports.useEffect(() => {
     if (graph2?.rootPath) {
       window.electronAPI.llm.getConfig(graph2.rootPath).then((config) => {
         setLLMConfig(config);
-        window.electronAPI.llm.getDescriptions(graph2.rootPath).then((descriptions) => {
-          if (Object.keys(descriptions).length > 0) {
-            setDescriptions(descriptions);
+        window.electronAPI.llm.getDescriptions(graph2.rootPath).then((descriptions2) => {
+          if (Object.keys(descriptions2).length > 0) {
+            setDescriptions(descriptions2);
           } else if (config) {
             setLLMLoading(true);
             window.electronAPI.llm.generateDescriptions(graph2.rootPath);
@@ -23729,10 +23748,11 @@ function Header() {
   const handleGenerateDescriptions = reactExports.useCallback(
     async (forceRegenerate = false) => {
       if (!graph2?.rootPath || !llmConfig) return;
+      setLLMError(null);
       setLLMLoading(true);
       await window.electronAPI.llm.generateDescriptions(graph2.rootPath, forceRegenerate);
     },
-    [graph2?.rootPath, llmConfig, setLLMLoading]
+    [graph2?.rootPath, llmConfig, setLLMLoading, setLLMError]
   );
   const handleSelectDirectory = reactExports.useCallback(async () => {
     try {
@@ -23829,7 +23849,7 @@ function Header() {
       title: "Générer les descriptions IA"
     },
     llmLoading ? "Génération..." : "Générer descriptions"
-  )), graph2 && /* @__PURE__ */ React$2.createElement("div", { className: "header__info" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__project-name" }, graph2.name), /* @__PURE__ */ React$2.createElement("span", { className: "header__file-count" }, graph2.files.size, " fichiers")), llmProgress && /* @__PURE__ */ React$2.createElement("div", { className: "header__llm-progress" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-progress-text" }, "IA: ", llmProgress.current, "/", llmProgress.total), /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-progress-file" }, llmProgress.currentFile)), /* @__PURE__ */ React$2.createElement(LLMConfigModal, { open: configModalOpen, onClose: () => setConfigModalOpen(false) }));
+  )), graph2 && /* @__PURE__ */ React$2.createElement("div", { className: "header__info" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__file-count" }, graph2.files.size, " fichiers")), llmError ? /* @__PURE__ */ React$2.createElement("div", { className: "header__llm-error", onClick: () => setLLMError(null), title: "Cliquer pour fermer" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-error-text" }, "IA: Erreur"), /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-error-message" }, llmError)) : llmProgress ? /* @__PURE__ */ React$2.createElement("div", { className: "header__llm-progress" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-progress-text" }, "IA: ", llmProgress.current, "/", llmProgress.total), /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-progress-file" }, llmProgress.currentFile)) : llmConfig && !llmLoading && Object.keys(descriptions).length > 0 && /* @__PURE__ */ React$2.createElement("div", { className: "header__llm-progress" }, /* @__PURE__ */ React$2.createElement("span", { className: "header__llm-progress-text" }, "IA: Done")), /* @__PURE__ */ React$2.createElement(LLMConfigModal, { open: configModalOpen, onClose: () => setConfigModalOpen(false) }));
 }
 function useGraphNavigation() {
   const {
@@ -24052,35 +24072,21 @@ function FileNodeComponent({ data, selected: selected2 }) {
       },
       file.fileName
     )),
-    /* @__PURE__ */ React$2.createElement(
-      "div",
-      {
-        className: "file-node__folder",
-        style: {
-          fontSize: "11px",
-          opacity: 0.7,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          marginBottom: description?.short ? "4px" : "8px"
-        }
-      },
-      file.folder || "."
-    ),
     description?.short && /* @__PURE__ */ React$2.createElement(
       "div",
       {
         className: "file-node__description",
         style: {
-          fontSize: "10px",
-          opacity: 0.75,
+          fontSize: "14px",
+          color: "#1f2937",
           marginBottom: "6px",
           overflow: "hidden",
           textOverflow: "ellipsis",
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
-          lineHeight: "1.3"
+          lineHeight: "1.3",
+          fontWeight: 500
         },
         title: description.short
       },
@@ -24092,6 +24098,7 @@ function FileNodeComponent({ data, selected: selected2 }) {
         className: "file-node__stats",
         style: {
           display: "flex",
+          justifyContent: "flex-end",
           gap: "10px",
           fontSize: "11px",
           opacity: 0.85
@@ -24136,8 +24143,8 @@ Fonctions, classes, composants, hooks, types... exportés ou non`,
       {
         className: "file-node__hint",
         style: {
-          fontSize: "10px",
-          marginTop: "8px",
+          fontSize: "9px",
+          marginTop: "4px",
           opacity: 0.6,
           textAlign: "center"
         }
