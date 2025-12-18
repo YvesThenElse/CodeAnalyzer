@@ -11,14 +11,16 @@ CodeAnalyzer is a desktop application that analyzes source code from TypeScript/
 ## Features
 
 - **Automatic Analysis** - Parses TypeScript/JavaScript/JSX/TSX files using AST
-- **Two Navigation Levels**:
+- **Three Navigation Levels**:
   - **Files Level** - Visualize file dependencies with import relationships
   - **Code Level** - Explore declarations inside a file (functions, classes, components, hooks, types)
+  - **Function Logic Level** - View the internal logic flowchart of a function (if/else, loops, returns, etc.)
 - **Path Alias Resolution** - Supports common aliases (`@/`, `@components/`, `~/`, etc.)
 - **Smart Coloring** - Files colored by folder with HSL gradients
 - **Community Detection** - Automatic grouping using Louvain algorithm
 - **File Tree Panel** - Browse project structure with quick navigation
 - **Details Panel** - View file imports, exports, and code declarations
+- **Breadcrumb Navigation** - Navigate between levels with clickable breadcrumb
 - **Auto-centering** - Smooth camera transitions when navigating
 
 ## Tech Stack
@@ -83,6 +85,7 @@ src/
 │   ├── fileAnalyzer.ts          # File system traversal
 │   ├── astParser.ts             # TypeScript/JSX AST parsing
 │   ├── graphBuilder.ts          # Dependency graph construction
+│   ├── functionLogicParser.ts   # Function logic flowchart extraction
 │   ├── communityDetection.ts    # Louvain clustering algorithm
 │   └── workers/
 │       └── analyzerWorker.ts    # Background analysis worker
@@ -96,9 +99,10 @@ src/
     │   ├── Diagram/             # React Flow components
     │   │   ├── DiagramView.tsx  # Main graph view
     │   │   ├── FileNode.tsx     # File node component
-    │   │   ├── CodeItemNode.tsx # Code declaration node
+    │   │   ├── CodeGroupNode.tsx # Grouped code items by type
+    │   │   ├── LogicNode.tsx    # Function logic flowchart node
     │   │   └── ImportEdge.tsx   # Import relationship edge
-    │   ├── Controls/            # Header, BackButton, LoadingOverlay
+    │   ├── Controls/            # Header, BackButton, Breadcrumb, LoadingOverlay
     │   └── Panels/              # FileTreePanel, NodeDetailsPanel
     ├── store/                   # Zustand state management
     ├── hooks/                   # Custom React hooks
@@ -106,6 +110,38 @@ src/
     ├── utils/                   # Utility functions
     └── styles/                  # Less stylesheets
 ```
+
+## Navigation Levels
+
+CodeAnalyzer provides three levels of drill-down navigation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  FILES (Level 1)         CODE (Level 2)           FUNCTION LOGIC (Level 3)  │
+│  ┌─────────────┐         ┌─────────────┐          ┌─────────────────────┐   │
+│  │  FileNode   │ ──────► │ CodeGroup   │ ──────►  │  Flowchart Logic    │   │
+│  │  FileNode   │ dbl-clk │ CodeGroup   │  click   │  (Decision, Loop,   │   │
+│  │  FileNode   │         │ CodeGroup   │  on fn   │   Process nodes)    │   │
+│  └─────────────┘         └─────────────┘          └─────────────────────┘   │
+│                                                                             │
+│  Breadcrumb: 📁 Project  ›  📄 File.tsx  ›  ƒ myFunction()                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Level 1: Files
+- View all files with their import/export relationships
+- Double-click a file to drill down to Code level
+- Files are colored by folder for easy identification
+
+### Level 2: Code
+- View all declarations in a file grouped by type (Functions, Classes, Types, etc.)
+- Click on a function/hook/component to see its logic flowchart
+- Groups can be collapsed/expanded
+
+### Level 3: Function Logic
+- Visualize the internal control flow of a function
+- Node types: Entry, Exit, Decision (if/switch), Loop (for/while), Process, Return, Call, Exception
+- Edges show flow direction with labels (true/false for conditions)
 
 ## Supported File Types
 
@@ -145,9 +181,11 @@ The analyzer skips these directories:
 |--------|----------|
 | Zoom in/out | Mouse wheel |
 | Pan | Left click + drag |
-| Drill down | Double-click on node |
+| Drill down to Code | Double-click on file node |
+| View function logic | Click on function in Code view |
 | Select node | Single click |
-| Back | Back button or breadcrumb |
+| Back to previous level | Back button (top-left) |
+| Navigate levels | Breadcrumb (bottom-left) |
 
 ## LLM Integration
 
@@ -199,15 +237,15 @@ The parallelization uses a worker pool pattern:
 - [x] LLM API key configuration (OpenAI, Anthropic, Ollama)
 - [x] Parallel description generation with real-time UI updates
 - [ ] Context menu - Open file in editor (external?)
-- [ ] Context menu - Display code logic
+- [x] Display code logic (Function Logic level)
 
 ### Phase 1 - Core Improvements
 - [ ] Parse and read `tsconfig.json` / `jsconfig.json` for accurate path alias resolution
 - [ ] Support `baseUrl` and `paths` configuration
 - [ ] Improve error handling for malformed files
 - [ ] Add search/filter functionality in file tree
-- [ ] Improve code level display
-- [ ] Display methods logic into specific graph (schema logic function)
+- [x] Improve code level display (grouped by type, collapsible)
+- [x] Display methods logic into specific graph (Function Logic level with flowchart)
 - [ ] Code review (...)
 - [ ] Generate unit tests
 
