@@ -26,6 +26,7 @@ import type {
   LLMProgress,
   FileDescription
 } from '../renderer/src/types/electron.types'
+import type { FunctionLogic } from '../renderer/src/types/graph.types'
 
 const electronAPI: ElectronAPI = {
   // Select directory dialog
@@ -70,6 +71,10 @@ const electronAPI: ElectronAPI = {
 
   // Show file in folder (opens explorer/finder)
   openFolder: (filePath: string) => ipcRenderer.invoke('shell:openFolder', filePath),
+
+  // Function logic analysis
+  getFunctionLogic: (filePath: string, functionName: string, functionLine: number): Promise<FunctionLogic | null> =>
+    ipcRenderer.invoke('logic:getFunctionLogic', filePath, functionName, functionLine),
 
   // LLM operations
   llm: {

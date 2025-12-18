@@ -20,6 +20,7 @@ import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import * as fs from 'fs/promises'
 import Store from 'electron-store'
 import { analyzeProjectDirectory } from './fileAnalyzer'
+import { parseFunctionLogic } from './functionLogicParser'
 import type { AnalysisProgress, AnalysisError, LLMConfig } from '../renderer/src/types/electron.types'
 import {
   loadLLMConfig,
@@ -128,6 +129,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   // Show file in folder (opens explorer/finder)
   ipcMain.handle('shell:openFolder', async (_event, filePath: string) => {
     shell.showItemInFolder(filePath)
+  })
+
+  // ===== FUNCTION LOGIC HANDLER =====
+
+  // Get function logic (flowchart data)
+  ipcMain.handle('logic:getFunctionLogic', async (_event, filePath: string, functionName: string, functionLine: number) => {
+    try {
+      return await parseFunctionLogic(filePath, functionName, functionLine)
+    } catch (error) {
+      console.error('Error parsing function logic:', error)
+      return null
+    }
   })
 
   // ===== LLM HANDLERS =====

@@ -21,6 +21,7 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Header } from './components/Controls/Header'
 import { BackButton } from './components/Controls/BackButton'
+import { Breadcrumb } from './components/Controls/Breadcrumb'
 import { DiagramView } from './components/Diagram/DiagramView'
 import { LoadingOverlay } from './components/Controls/LoadingOverlay'
 import { NodeDetailsPanel } from './components/Panels/NodeDetailsPanel'
@@ -89,6 +90,9 @@ function App(): JSX.Element {
             <main className="app__content">
               <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>
                 <BackButton />
+              </div>
+              <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 10 }}>
+                <Breadcrumb />
               </div>
               <DiagramView />
             </main>

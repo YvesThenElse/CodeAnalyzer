@@ -22,6 +22,7 @@ import {
   GraphLevel,
   ClusteringMode,
   CodeItemType,
+  LogicNodeType,
   type AnalyzedGraph,
   type SerializedAnalyzedGraph,
   type FileNode,
@@ -30,7 +31,9 @@ import {
   type CodeItemNodeData,
   type CodeGroupNodeData,
   type ImportRelation,
-  type Cluster
+  type Cluster,
+  type FunctionLogic,
+  type LogicNodeData
 } from '../types/graph.types'
 import type { AnalysisProgress, LLMConfig, LLMProgress, FileDescription } from '../types/electron.types'
 import { calculateLayout } from '../utils/layoutUtils'
@@ -40,7 +43,8 @@ import { getUniqueFolderColor } from '../utils/colorUtils'
 type GraphFileNode = Node<FileNodeData, 'fileNode'>
 type GraphCodeNode = Node<CodeItemNodeData, 'codeItemNode'>
 type GraphCodeGroupNode = Node<CodeGroupNodeData, 'codeGroupNode'>
-type GraphNode = GraphFileNode | GraphCodeNode | GraphCodeGroupNode
+type GraphLogicNode = Node<LogicNodeData, 'logicNode'>
+type GraphNode = GraphFileNode | GraphCodeNode | GraphCodeGroupNode | GraphLogicNode
 
 interface GraphState {
   // Project data
@@ -68,6 +72,11 @@ interface GraphState {
 
   // Code view state
   collapsedCodeGroups: Set<string>
+
+  // Function logic state
+  functionLogic: FunctionLogic | null
+  selectedFunction: { name: string; line: number; fileId: string } | null
+  loadingFunctionLogic: boolean
 
   // LLM State
   llmConfig: LLMConfig | null
@@ -99,6 +108,11 @@ interface GraphState {
 
   // Code view actions
   toggleCodeGroup: (groupType: string) => void
+
+  // Function logic actions
+  drillDownToFunctionLogic: (functionName: string, functionLine: number) => Promise<void>
+  goBackToCode: () => void
+  setFunctionLogic: (logic: FunctionLogic | null) => void
 
   // Reset
   reset: () => void
@@ -218,6 +232,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   highlightedFileIds: new Set(),
   hoveredFileId: null,
   collapsedCodeGroups: new Set(),
+  functionLogic: null,
+  selectedFunction: null,
+  loadingFunctionLogic: false,
   llmConfig: null,
   descriptions: {},
   llmLoading: false,
@@ -342,6 +359,55 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return { collapsedCodeGroups: newCollapsed }
     }),
 
+  // Function logic actions
+  drillDownToFunctionLogic: async (functionName, functionLine) => {
+    const { graph, selectedFileId } = get()
+    if (!graph || !selectedFileId) return
+
+    const file = graph.files.get(selectedFileId)
+    if (!file) return
+
+    set({
+      loadingFunctionLogic: true,
+      selectedFunction: { name: functionName, line: functionLine, fileId: selectedFileId }
+    })
+
+    try {
+      const logic = await window.electronAPI.getFunctionLogic(file.filePath, functionName, functionLine)
+      if (logic) {
+        set({
+          functionLogic: logic,
+          currentLevel: GraphLevel.FUNCTION_LOGIC,
+          loadingFunctionLogic: false
+        })
+      } else {
+        console.error('Could not parse function logic')
+        set({
+          loadingFunctionLogic: false,
+          selectedFunction: null
+        })
+      }
+    } catch (error) {
+      console.error('Error loading function logic:', error)
+      set({
+        loadingFunctionLogic: false,
+        selectedFunction: null
+      })
+    }
+  },
+
+  goBackToCode: () => {
+    const { selectedFunction } = get()
+    set({
+      currentLevel: GraphLevel.CODE,
+      functionLogic: null,
+      selectedFileId: selectedFunction?.fileId || null,
+      selectedFunction: null
+    })
+  },
+
+  setFunctionLogic: (logic) => set({ functionLogic: logic }),
+
   reset: () =>
     set({
       graph: null,
@@ -358,6 +424,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       highlightedFileIds: new Set(),
       hoveredFileId: null,
       collapsedCodeGroups: new Set(),
+      functionLogic: null,
+      selectedFunction: null,
+      loadingFunctionLogic: false,
       llmConfig: null,
       descriptions: {},
       llmLoading: false,
@@ -383,7 +452,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   // Selectors
   getVisibleNodesAndEdges: () => {
-    const { graph, currentLevel, focusedFileId, selectedFileId, highlightedFileIds, collapsedCodeGroups } = get()
+    const { graph, currentLevel, focusedFileId, selectedFileId, highlightedFileIds, collapsedCodeGroups, functionLogic } = get()
 
     if (!graph) {
       return { nodes: [], edges: [] }
@@ -391,9 +460,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
     if (currentLevel === GraphLevel.FILES) {
       return getFileNodesAndEdges(graph, focusedFileId, highlightedFileIds)
-    } else {
+    } else if (currentLevel === GraphLevel.CODE) {
       return getCodeNodesAndEdges(graph, selectedFileId, collapsedCodeGroups)
+    } else if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+      return getFunctionLogicNodesAndEdges(functionLogic)
     }
+    return { nodes: [], edges: [] }
   },
 
   getSelectedFile: () => {
@@ -725,6 +797,128 @@ function getCodeNodesAndEdges(
 
   // No edges at code level
   const edges: Edge[] = []
+
+  return { nodes: nodes as GraphNode[], edges }
+}
+
+/**
+ * Get function logic nodes and edges for flowchart view
+ */
+function getFunctionLogicNodesAndEdges(
+  functionLogic: FunctionLogic | null
+): { nodes: GraphNode[]; edges: Edge[] } {
+  if (!functionLogic) {
+    return { nodes: [], edges: [] }
+  }
+
+  // Layout constants
+  const NODE_WIDTH = 200
+  const NODE_HEIGHT_BASE = 60
+  const HORIZONTAL_SPACING = 100
+  const VERTICAL_SPACING = 80
+
+  // Build adjacency for layout calculation
+  const inDegree = new Map<string, number>()
+  const outEdges = new Map<string, string[]>()
+
+  for (const node of functionLogic.nodes) {
+    inDegree.set(node.id, 0)
+    outEdges.set(node.id, [])
+  }
+
+  for (const edge of functionLogic.edges) {
+    inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1)
+    outEdges.get(edge.source)?.push(edge.target)
+  }
+
+  // Calculate levels using topological sort (BFS)
+  const levels = new Map<string, number>()
+  const queue: string[] = []
+
+  // Find entry node (or nodes with in-degree 0)
+  for (const [nodeId, degree] of inDegree) {
+    if (degree === 0) {
+      queue.push(nodeId)
+      levels.set(nodeId, 0)
+    }
+  }
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!
+    const currentLevel = levels.get(nodeId) || 0
+
+    for (const targetId of outEdges.get(nodeId) || []) {
+      const existingLevel = levels.get(targetId)
+      if (existingLevel === undefined || existingLevel < currentLevel + 1) {
+        levels.set(targetId, currentLevel + 1)
+      }
+
+      // Decrease in-degree for this traversal
+      const remaining = inDegree.get(targetId)! - 1
+      inDegree.set(targetId, remaining)
+      if (remaining === 0) {
+        queue.push(targetId)
+      }
+    }
+  }
+
+  // Group nodes by level
+  const nodesByLevel = new Map<number, string[]>()
+  for (const [nodeId, level] of levels) {
+    const existing = nodesByLevel.get(level) || []
+    existing.push(nodeId)
+    nodesByLevel.set(level, existing)
+  }
+
+  // Calculate positions
+  const nodePositions = new Map<string, { x: number; y: number }>()
+
+  for (const [level, nodeIds] of nodesByLevel) {
+    const y = level * (NODE_HEIGHT_BASE + VERTICAL_SPACING)
+    const totalWidth = nodeIds.length * NODE_WIDTH + (nodeIds.length - 1) * HORIZONTAL_SPACING
+    const startX = -totalWidth / 2
+
+    nodeIds.forEach((nodeId, index) => {
+      nodePositions.set(nodeId, {
+        x: startX + index * (NODE_WIDTH + HORIZONTAL_SPACING),
+        y
+      })
+    })
+  }
+
+  // Create React Flow nodes
+  const nodes: GraphLogicNode[] = functionLogic.nodes.map((logicNode) => {
+    const position = nodePositions.get(logicNode.id) || { x: 0, y: 0 }
+
+    return {
+      id: logicNode.id,
+      type: 'logicNode',
+      position,
+      data: {
+        node: logicNode,
+        functionName: functionLogic.functionName
+      }
+    }
+  })
+
+  // Create React Flow edges
+  const edges: Edge[] = functionLogic.edges.map((logicEdge) => ({
+    id: logicEdge.id,
+    source: logicEdge.source,
+    target: logicEdge.target,
+    label: logicEdge.label,
+    type: 'smoothstep',
+    animated: logicEdge.label === 'true' || logicEdge.label === 'false',
+    style: {
+      stroke: logicEdge.label === 'true' ? '#22c55e' :
+              logicEdge.label === 'false' ? '#ef4444' : '#64748b'
+    },
+    labelStyle: {
+      fill: logicEdge.label === 'true' ? '#22c55e' :
+            logicEdge.label === 'false' ? '#ef4444' : '#64748b',
+      fontWeight: 600
+    }
+  }))
 
   return { nodes: nodes as GraphNode[], edges }
 }

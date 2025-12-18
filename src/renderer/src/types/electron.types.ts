@@ -16,7 +16,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SerializedAnalyzedGraph } from './graph.types'
+import type { SerializedAnalyzedGraph, FunctionLogic } from './graph.types'
 
 // ===== API EXPOSED TO RENDERER =====
 
@@ -39,6 +39,9 @@ export interface ElectronAPI {
   // Shell operations
   openFile: (filePath: string) => Promise<string>
   openFolder: (filePath: string) => Promise<void>
+
+  // Function logic analysis
+  getFunctionLogic: (filePath: string, functionName: string, functionLine: number) => Promise<FunctionLogic | null>
 
   // LLM operations
   llm: {

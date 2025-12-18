@@ -17,20 +17,36 @@
  */
 
 import React from 'react'
-import { useGraphNavigation } from '../../hooks/useGraphNavigation'
+import { useGraphStore } from '../../store/graphStore'
+import { GraphLevel } from '../../types/graph.types'
 
 export function BackButton(): JSX.Element | null {
-  const { canGoBack, handleBackToFiles, getCurrentFile } = useGraphNavigation()
+  const {
+    currentLevel,
+    goBackToFiles,
+    goBackToCode
+  } = useGraphStore()
 
-  if (!canGoBack) {
+  // Only show when not at FILES level
+  if (currentLevel === GraphLevel.FILES) {
     return null
   }
 
-  const currentFile = getCurrentFile()
+  const handleClick = (): void => {
+    if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+      goBackToCode()
+    } else if (currentLevel === GraphLevel.CODE) {
+      goBackToFiles()
+    }
+  }
+
+  const label = currentLevel === GraphLevel.FUNCTION_LOGIC
+    ? 'Retour au code'
+    : 'Retour aux fichiers'
 
   return (
     <button
-      onClick={handleBackToFiles}
+      onClick={handleClick}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -53,21 +69,7 @@ export function BackButton(): JSX.Element | null {
       }}
     >
       <span style={{ fontSize: '16px' }}>←</span>
-      <span>Retour aux fichiers</span>
-      {currentFile && (
-        <span
-          style={{
-            color: '#94a3b8',
-            fontSize: '12px',
-            maxWidth: '150px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          ({currentFile.fileName})
-        </span>
-      )}
+      <span>{label}</span>
     </button>
   )
 }

@@ -35,6 +35,8 @@ const electronAPI = {
   openFile: (filePath) => electron.ipcRenderer.invoke("shell:openFile", filePath),
   // Show file in folder (opens explorer/finder)
   openFolder: (filePath) => electron.ipcRenderer.invoke("shell:openFolder", filePath),
+  // Function logic analysis
+  getFunctionLogic: (filePath, functionName, functionLine) => electron.ipcRenderer.invoke("logic:getFunctionLogic", filePath, functionName, functionLine),
   // LLM operations
   llm: {
     // Get LLM configuration for a project

@@ -18,10 +18,18 @@
 
 import React, { memo, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import type { CodeGroupNodeData, CodeItemType, CodeItem } from '../../types/graph.types'
+import { CodeItemType, type CodeGroupNodeData, type CodeItem } from '../../types/graph.types'
 import { useGraphStore } from '../../store/graphStore'
 
 type CodeGroupNodeProps = NodeProps<CodeGroupNodeData>
+
+// Types that can have their logic analyzed
+const ANALYZABLE_TYPES: CodeItemType[] = [
+  CodeItemType.FUNCTION,
+  CodeItemType.HOOK,
+  CodeItemType.REACT_COMPONENT,
+  CodeItemType.CLASS
+]
 
 // Icon, color, and label mapping for code item types
 const codeGroupStyles: Record<CodeItemType, { icon: string; color: string; bgColor: string; label: string }> = {
@@ -37,7 +45,9 @@ const codeGroupStyles: Record<CodeItemType, { icon: string; color: string; bgCol
 function CodeGroupNodeComponent({ data }: CodeGroupNodeProps): JSX.Element {
   const { type, items, isCollapsed } = data
   const toggleCodeGroup = useGraphStore((state) => state.toggleCodeGroup)
+  const drillDownToFunctionLogic = useGraphStore((state) => state.drillDownToFunctionLogic)
   const style = codeGroupStyles[type] || codeGroupStyles.const
+  const isAnalyzable = ANALYZABLE_TYPES.includes(type)
 
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
@@ -47,17 +57,39 @@ function CodeGroupNodeComponent({ data }: CodeGroupNodeProps): JSX.Element {
     [type, toggleCodeGroup]
   )
 
+  const handleItemClick = useCallback(
+    (e: React.MouseEvent, item: CodeItem) => {
+      e.stopPropagation()
+      if (isAnalyzable) {
+        drillDownToFunctionLogic(item.name, item.line)
+      }
+    },
+    [isAnalyzable, drillDownToFunctionLogic]
+  )
+
   const renderItem = (item: CodeItem): JSX.Element => (
     <div
       key={item.id}
+      onClick={(e) => handleItemClick(e, item)}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         padding: '6px 10px',
         borderBottom: '1px solid #f3f4f6',
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        cursor: isAnalyzable ? 'pointer' : 'default',
+        transition: 'background-color 0.15s ease'
       }}
+      onMouseEnter={(e) => {
+        if (isAnalyzable) {
+          e.currentTarget.style.backgroundColor = style.bgColor
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#ffffff'
+      }}
+      title={isAnalyzable ? `Cliquer pour voir la logique de ${item.name}` : undefined}
     >
       <span
         style={{
@@ -77,7 +109,21 @@ function CodeGroupNodeComponent({ data }: CodeGroupNodeProps): JSX.Element {
           </span>
         )}
       </span>
-      <div style={{ display: 'flex', gap: '4px', fontSize: '9px' }}>
+      <div style={{ display: 'flex', gap: '4px', fontSize: '9px', alignItems: 'center' }}>
+        {isAnalyzable && (
+          <span
+            style={{
+              padding: '1px 4px',
+              backgroundColor: '#f0f9ff',
+              color: '#0284c7',
+              borderRadius: '3px',
+              opacity: 0.8
+            }}
+            title="Voir la logique"
+          >
+            ▶
+          </span>
+        )}
         {item.isExported && (
           <span
             style={{

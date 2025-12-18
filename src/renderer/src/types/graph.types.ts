@@ -20,7 +20,8 @@
 
 export enum GraphLevel {
   FILES = 1,
-  CODE = 2
+  CODE = 2,
+  FUNCTION_LOGIC = 3
 }
 
 export enum FileNodeType {
@@ -43,6 +44,17 @@ export enum CodeItemType {
 export enum ClusteringMode {
   FOLDER = 'folder',
   COMMUNITY = 'community'
+}
+
+export enum LogicNodeType {
+  ENTRY = 'entry',
+  EXIT = 'exit',
+  DECISION = 'decision',
+  PROCESS = 'process',
+  LOOP = 'loop',
+  RETURN = 'return',
+  CALL = 'call',
+  EXCEPTION = 'exception'
 }
 
 // ===== FILE NODE =====
@@ -180,6 +192,36 @@ export interface CodeGroupNodeData {
 export interface ImportEdgeData {
   relation: ImportRelation
   isHighlighted: boolean
+}
+
+// ===== FUNCTION LOGIC =====
+
+export interface LogicNode {
+  id: string
+  type: LogicNodeType
+  label: string
+  code?: string
+  line?: number
+}
+
+export interface LogicEdge {
+  id: string
+  source: string
+  target: string
+  label?: string // "true", "false", "break", "continue", etc.
+}
+
+export interface FunctionLogic {
+  functionName: string
+  fileName: string
+  filePath: string
+  nodes: LogicNode[]
+  edges: LogicEdge[]
+}
+
+export interface LogicNodeData {
+  node: LogicNode
+  functionName: string
 }
 
 // ===== COLOR UTILITIES =====

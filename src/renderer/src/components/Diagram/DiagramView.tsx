@@ -36,13 +36,15 @@ import { useGraphNavigation } from '../../hooks/useGraphNavigation'
 import { FileNode } from './FileNode'
 import { CodeItemNode } from './CodeItemNode'
 import { CodeGroupNode } from './CodeGroupNode'
+import { LogicNode } from './LogicNode'
 import { ImportEdge } from './ImportEdge'
-import { GraphLevel, type FileNodeData, type CodeItemNodeData, type CodeGroupNodeData } from '../../types/graph.types'
+import { GraphLevel, LogicNodeType, type FileNodeData, type CodeItemNodeData, type CodeGroupNodeData, type LogicNodeData } from '../../types/graph.types'
 
 const nodeTypes = {
   fileNode: FileNode,
   codeItemNode: CodeItemNode,
-  codeGroupNode: CodeGroupNode
+  codeGroupNode: CodeGroupNode,
+  logicNode: LogicNode
 }
 
 const edgeTypes = {
@@ -57,6 +59,8 @@ export function DiagramView(): JSX.Element {
     focusedFileId,
     selectedFileId,
     collapsedCodeGroups,
+    functionLogic,
+    loadingFunctionLogic,
     setSelectedNodeId
   } = useGraphStore()
 
@@ -74,7 +78,7 @@ export function DiagramView(): JSX.Element {
   // Get nodes and edges from store (depends on navigation state)
   const { nodes: storeNodes, edges: storeEdges } = useMemo(
     () => getVisibleNodesAndEdges(),
-    [getVisibleNodesAndEdges, graph, currentLevel, focusedFileId, selectedFileId, collapsedCodeGroups]
+    [getVisibleNodesAndEdges, graph, currentLevel, focusedFileId, selectedFileId, collapsedCodeGroups, functionLogic]
   )
 
   // Listen to selection changes and update store
@@ -185,6 +189,19 @@ export function DiagramView(): JSX.Element {
     )
   }
 
+  // Loading state for function logic
+  if (loadingFunctionLogic) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state__icon">⏳</div>
+        <h2 className="empty-state__title">Analyse en cours...</h2>
+        <p className="empty-state__description">
+          Analyse de la logique de la fonction...
+        </p>
+      </div>
+    )
+  }
+
   // Empty level state
   if (nodes.length === 0) {
     return (
@@ -192,9 +209,11 @@ export function DiagramView(): JSX.Element {
         <div className="empty-state__icon">📁</div>
         <h2 className="empty-state__title">Aucun element a afficher</h2>
         <p className="empty-state__description">
-          {currentLevel === GraphLevel.CODE
-            ? 'Ce fichier ne contient pas de declarations.'
-            : 'Aucun fichier trouve.'}
+          {currentLevel === GraphLevel.FUNCTION_LOGIC
+            ? 'Impossible d\'analyser la logique de cette fonction.'
+            : currentLevel === GraphLevel.CODE
+              ? 'Ce fichier ne contient pas de declarations.'
+              : 'Aucun fichier trouve.'}
         </p>
       </div>
     )
@@ -235,6 +254,21 @@ export function DiagramView(): JSX.Element {
             if (node.type === 'codeGroupNode') {
               const data = node.data as CodeGroupNodeData
               return data?.file?.color || '#94a3b8'
+            }
+            if (node.type === 'logicNode') {
+              const data = node.data as LogicNodeData
+              // Color based on logic node type
+              switch (data?.node?.type) {
+                case LogicNodeType.ENTRY: return '#22c55e'
+                case LogicNodeType.EXIT: return '#64748b'
+                case LogicNodeType.DECISION: return '#f59e0b'
+                case LogicNodeType.PROCESS: return '#3b82f6'
+                case LogicNodeType.LOOP: return '#8b5cf6'
+                case LogicNodeType.RETURN: return '#10b981'
+                case LogicNodeType.CALL: return '#06b6d4'
+                case LogicNodeType.EXCEPTION: return '#ef4444'
+                default: return '#94a3b8'
+              }
             }
             return '#94a3b8'
           }}
