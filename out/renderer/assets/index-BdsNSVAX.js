@@ -23867,14 +23867,35 @@ function getFunctionLogicNodesAndEdges(functionLogic) {
     existing.push(nodeId);
     nodesByLevel.set(level, existing);
   }
+  const nodeDataMap = /* @__PURE__ */ new Map();
+  for (const node of functionLogic.nodes) {
+    nodeDataMap.set(node.id, node);
+  }
   const nodePositions = /* @__PURE__ */ new Map();
+  const SECOND_COLUMN_OFFSET = NODE_WIDTH2 + HORIZONTAL_SPACING * 2;
   for (const [level, nodeIds] of nodesByLevel) {
     const y2 = level * (NODE_HEIGHT_BASE + VERTICAL_SPACING);
-    const totalWidth = nodeIds.length * NODE_WIDTH2 + (nodeIds.length - 1) * HORIZONTAL_SPACING;
+    const mainNodes = [];
+    const sideNodes = [];
+    for (const nodeId of nodeIds) {
+      const nodeData = nodeDataMap.get(nodeId);
+      if (nodeData && (nodeData.type === LogicNodeType.EXIT || nodeData.type === LogicNodeType.RETURN)) {
+        sideNodes.push(nodeId);
+      } else {
+        mainNodes.push(nodeId);
+      }
+    }
+    const totalWidth = mainNodes.length * NODE_WIDTH2 + (mainNodes.length - 1) * HORIZONTAL_SPACING;
     const startX = -totalWidth / 2;
-    nodeIds.forEach((nodeId, index2) => {
+    mainNodes.forEach((nodeId, index2) => {
       nodePositions.set(nodeId, {
         x: startX + index2 * (NODE_WIDTH2 + HORIZONTAL_SPACING),
+        y: y2
+      });
+    });
+    sideNodes.forEach((nodeId, index2) => {
+      nodePositions.set(nodeId, {
+        x: SECOND_COLUMN_OFFSET + index2 * (NODE_WIDTH2 + HORIZONTAL_SPACING),
         y: y2
       });
     });
@@ -25020,6 +25041,40 @@ const NODE_STYLES = {
 function LogicNodeComponent({ data, selected: selected2 }) {
   const { node } = data;
   const style2 = NODE_STYLES[node.type] || NODE_STYLES[LogicNodeType.PROCESS];
+  const isMergeNode = node.label.startsWith("(") && node.label.endsWith(")");
+  if (isMergeNode) {
+    return /* @__PURE__ */ React$2.createElement(
+      "div",
+      {
+        style: {
+          width: "16px",
+          height: "16px",
+          borderRadius: "50%",
+          background: "#94a3b8",
+          border: "2px solid #64748b",
+          boxShadow: selected2 ? "0 0 0 2px #3b82f6" : "0 1px 3px rgba(0, 0, 0, 0.2)",
+          cursor: "default"
+        },
+        title: node.label
+      },
+      /* @__PURE__ */ React$2.createElement(
+        Handle,
+        {
+          type: "target",
+          position: Position.Top,
+          style: { background: "#64748b", width: "6px", height: "6px" }
+        }
+      ),
+      /* @__PURE__ */ React$2.createElement(
+        Handle,
+        {
+          type: "source",
+          position: Position.Bottom,
+          style: { background: "#64748b", width: "6px", height: "6px" }
+        }
+      )
+    );
+  }
   const getShapeStyles = () => {
     const base = {
       background: style2.background,

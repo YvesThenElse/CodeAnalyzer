@@ -93,6 +93,38 @@ function LogicNodeComponent({ data, selected }: LogicNodeProps): JSX.Element {
   const { node } = data
   const style = NODE_STYLES[node.type] || NODE_STYLES[LogicNodeType.PROCESS]
 
+  // Check if this is a merge/utility node (labels like "(merge)", "(loop exit)", etc.)
+  const isMergeNode = node.label.startsWith('(') && node.label.endsWith(')')
+
+  // Render simplified dot for merge nodes
+  if (isMergeNode) {
+    return (
+      <div
+        style={{
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          background: '#94a3b8',
+          border: '2px solid #64748b',
+          boxShadow: selected ? '0 0 0 2px #3b82f6' : '0 1px 3px rgba(0, 0, 0, 0.2)',
+          cursor: 'default'
+        }}
+        title={node.label}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{ background: '#64748b', width: '6px', height: '6px' }}
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{ background: '#64748b', width: '6px', height: '6px' }}
+        />
+      </div>
+    )
+  }
+
   // Base styles for different shapes
   const getShapeStyles = (): React.CSSProperties => {
     const base: React.CSSProperties = {

@@ -33,7 +33,8 @@ import {
   type ImportRelation,
   type Cluster,
   type FunctionLogic,
-  type LogicNodeData
+  type LogicNodeData,
+  type LogicNode
 } from '../types/graph.types'
 import type { AnalysisProgress, LLMConfig, LLMProgress, FileDescription } from '../types/electron.types'
 import { calculateLayout } from '../utils/layoutUtils'
@@ -890,17 +891,47 @@ function getFunctionLogicNodesAndEdges(
     nodesByLevel.set(level, existing)
   }
 
+  // Create a map of node id to node data for type checking
+  const nodeDataMap = new Map<string, LogicNode>()
+  for (const node of functionLogic.nodes) {
+    nodeDataMap.set(node.id, node)
+  }
+
   // Calculate positions
   const nodePositions = new Map<string, { x: number; y: number }>()
+  const SECOND_COLUMN_OFFSET = NODE_WIDTH + HORIZONTAL_SPACING * 2 // Offset for exit/return nodes
 
   for (const [level, nodeIds] of nodesByLevel) {
     const y = level * (NODE_HEIGHT_BASE + VERTICAL_SPACING)
-    const totalWidth = nodeIds.length * NODE_WIDTH + (nodeIds.length - 1) * HORIZONTAL_SPACING
+
+    // Separate nodes: exit/return go to second column, others stay in main column
+    const mainNodes: string[] = []
+    const sideNodes: string[] = []
+
+    for (const nodeId of nodeIds) {
+      const nodeData = nodeDataMap.get(nodeId)
+      if (nodeData && (nodeData.type === LogicNodeType.EXIT || nodeData.type === LogicNodeType.RETURN)) {
+        sideNodes.push(nodeId)
+      } else {
+        mainNodes.push(nodeId)
+      }
+    }
+
+    // Position main nodes centered
+    const totalWidth = mainNodes.length * NODE_WIDTH + (mainNodes.length - 1) * HORIZONTAL_SPACING
     const startX = -totalWidth / 2
 
-    nodeIds.forEach((nodeId, index) => {
+    mainNodes.forEach((nodeId, index) => {
       nodePositions.set(nodeId, {
         x: startX + index * (NODE_WIDTH + HORIZONTAL_SPACING),
+        y
+      })
+    })
+
+    // Position side nodes (exit/return) in second column to the right
+    sideNodes.forEach((nodeId, index) => {
+      nodePositions.set(nodeId, {
+        x: SECOND_COLUMN_OFFSET + index * (NODE_WIDTH + HORIZONTAL_SPACING),
         y
       })
     })
