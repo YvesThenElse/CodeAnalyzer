@@ -61,7 +61,9 @@ export function DiagramView(): JSX.Element {
     collapsedCodeGroups,
     functionLogic,
     loadingFunctionLogic,
-    setSelectedNodeId
+    setSelectedNodeId,
+    setHoveredLogicNodeId,
+    setSelectedLogicNodeId
   } = useGraphStore()
 
   const {
@@ -141,9 +143,11 @@ export function DiagramView(): JSX.Element {
     (_event, node) => {
       if (currentLevel === GraphLevel.FILES) {
         handleFileClick(node.id)
+      } else if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+        setSelectedLogicNodeId(node.id)
       }
     },
-    [currentLevel, handleFileClick]
+    [currentLevel, handleFileClick, setSelectedLogicNodeId]
   )
 
   // Handle double-click to drill down
@@ -161,18 +165,22 @@ export function DiagramView(): JSX.Element {
     (_event, node) => {
       if (currentLevel === GraphLevel.FILES) {
         handleFileMouseEnter(node.id)
+      } else if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+        setHoveredLogicNodeId(node.id)
       }
     },
-    [currentLevel, handleFileMouseEnter]
+    [currentLevel, handleFileMouseEnter, setHoveredLogicNodeId]
   )
 
   const onNodeMouseLeave: NodeMouseHandler = useCallback(
     () => {
       if (currentLevel === GraphLevel.FILES) {
         handleFileMouseLeave()
+      } else if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+        setHoveredLogicNodeId(null)
       }
     },
-    [currentLevel, handleFileMouseLeave]
+    [currentLevel, handleFileMouseLeave, setHoveredLogicNodeId]
   )
 
   // Empty state

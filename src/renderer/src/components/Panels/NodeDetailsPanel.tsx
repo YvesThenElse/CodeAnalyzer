@@ -20,6 +20,7 @@ import React from 'react'
 import { useGraphStore } from '../../store/graphStore'
 import { GraphLevel, type CodeItem, type FileNode } from '../../types/graph.types'
 import { getDarkerColor } from '../../utils/colorUtils'
+import { FunctionCodePanel } from './FunctionCodePanel'
 import './NodeDetailsPanel.less'
 
 const typeIcons: Record<string, string> = {
@@ -120,6 +121,11 @@ export function NodeDetailsPanel(): JSX.Element {
 
     // Show file details if no code item is selected
     return <FileDetailsPanel file={file} graph={graph} onClose={undefined} />
+  }
+
+  // Function logic level - show function code panel
+  if (currentLevel === GraphLevel.FUNCTION_LOGIC) {
+    return <FunctionCodePanel />
   }
 
   return <EmptyPanel />

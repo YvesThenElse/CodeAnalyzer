@@ -91,7 +91,7 @@ function App(): JSX.Element {
               <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>
                 <BackButton />
               </div>
-              <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 10 }}>
+              <div style={{ position: 'absolute', bottom: '16px', left: '60px', zIndex: 10 }}>
                 <Breadcrumb />
               </div>
               <DiagramView />

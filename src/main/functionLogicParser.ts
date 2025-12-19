@@ -45,6 +45,9 @@ interface FunctionLogic {
   filePath: string
   nodes: LogicNode[]
   edges: LogicEdge[]
+  sourceCode: string
+  startLine: number
+  endLine: number
 }
 
 // ID generator
@@ -71,21 +74,55 @@ export async function parseFunctionLogic(
 
   try {
     const code = await fs.readFile(filePath, 'utf-8')
+    const codeLines = code.split('\n')
     const ast = parse(code, {
       jsx: true,
       loc: true,
       range: true,
+      comment: true,
       errorOnUnknownASTType: false,
       errorOnTypeScriptSyntacticAndSemanticIssues: false
     })
 
     // Find the function
-    const functionNode = findFunction(ast, functionName, functionLine)
-    if (!functionNode) {
+    const functionMatch = findFunction(ast, functionName, functionLine)
+    if (!functionMatch) {
       console.log(`[FunctionLogicParser] Function not found: ${functionName}`)
       return null
     }
-    console.log(`[FunctionLogicParser] Function found at line ${functionNode.loc?.start.line}`)
+    const functionNode = functionMatch.node
+
+    // Look for preceding documentation comment (JSDoc or block comment)
+    let docStartLine = functionMatch.sourceStartLine
+    const declarationLine = functionMatch.sourceStartLine
+
+    // Search backwards from the declaration line for comments
+    for (let i = declarationLine - 2; i >= 0; i--) {
+      const line = codeLines[i].trim()
+      // Check if this line is part of a comment
+      if (line.endsWith('*/')) {
+        // Found end of a block comment, search for its start
+        for (let j = i; j >= 0; j--) {
+          const commentLine = codeLines[j].trim()
+          if (commentLine.startsWith('/*') || commentLine.startsWith('/**')) {
+            docStartLine = j + 1 // +1 because lines are 1-indexed
+            break
+          }
+        }
+        break
+      } else if (line.startsWith('//')) {
+        // Single-line comment, include it
+        docStartLine = i + 1
+      } else if (line === '' || line.startsWith('*')) {
+        // Empty line or inside block comment, continue searching
+        continue
+      } else {
+        // Found non-comment code, stop searching
+        break
+      }
+    }
+
+    console.log(`[FunctionLogicParser] Function found at line ${functionMatch.sourceStartLine}, doc starts at ${docStartLine}`)
 
     // Extract logic
     const nodes: LogicNode[] = []
@@ -97,7 +134,7 @@ export async function parseFunctionLogic(
       id: entryId,
       type: 'entry',
       label: `${functionName}()`,
-      line: functionNode.loc?.start.line
+      line: functionMatch.sourceStartLine
     })
 
     // Create exit node (will be connected at the end)
@@ -142,17 +179,31 @@ export async function parseFunctionLogic(
       }
     }
 
+    // Extract source code of the function (include documentation comments if present)
+    const startLine = docStartLine
+    const endLine = functionMatch.sourceEndLine
+    const sourceCode = codeLines.slice(startLine - 1, endLine).join('\n')
+
     return {
       functionName,
       fileName: path.basename(filePath),
       filePath,
       nodes,
-      edges
+      edges,
+      sourceCode,
+      startLine,
+      endLine
     }
   } catch (error) {
     console.error('Error parsing function logic:', error)
     return null
   }
+}
+
+interface FunctionMatch {
+  node: TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression
+  sourceStartLine: number
+  sourceEndLine: number
 }
 
 /**
@@ -162,41 +213,45 @@ function findFunction(
   ast: TSESTree.Program,
   functionName: string,
   targetLine: number
-): TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
-  let found: TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null = null
-  let bestMatch: { node: TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression; distance: number } | null = null
+): FunctionMatch | null {
+  let bestMatch: { match: FunctionMatch; distance: number } | null = null
 
   function checkMatch(
     node: TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
-    line: number
+    line: number,
+    sourceStartLine: number,
+    sourceEndLine: number
   ): void {
     const distance = Math.abs(line - targetLine)
     if (distance <= 5) { // Allow up to 5 lines difference
       if (!bestMatch || distance < bestMatch.distance) {
-        bestMatch = { node, distance }
+        bestMatch = { match: { node, sourceStartLine, sourceEndLine }, distance }
       }
     }
   }
 
   function traverse(node: TSESTree.Node): void {
-    if (found) return
-
     // Function declaration: function foo() {}
     if (node.type === 'FunctionDeclaration' && node.id?.name === functionName) {
-      checkMatch(node, node.loc?.start.line || 0)
+      const startLine = node.loc?.start.line || 0
+      const endLine = node.loc?.end.line || 0
+      checkMatch(node, startLine, startLine, endLine)
     }
 
     // Export named declaration: export function foo() {} or export const foo = () => {}
     if (node.type === 'ExportNamedDeclaration' && node.declaration) {
+      const declStartLine = node.loc?.start.line || 0
+      const declEndLine = node.loc?.end.line || 0
+
       if (node.declaration.type === 'FunctionDeclaration' && node.declaration.id?.name === functionName) {
-        checkMatch(node.declaration, node.loc?.start.line || 0)
+        checkMatch(node.declaration, declStartLine, declStartLine, declEndLine)
       }
       if (node.declaration.type === 'VariableDeclaration') {
         for (const decl of node.declaration.declarations) {
           if (decl.id.type === 'Identifier' && decl.id.name === functionName) {
             const init = unwrapCallExpression(decl.init)
             if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') {
-              checkMatch(init, node.loc?.start.line || 0)
+              checkMatch(init, declStartLine, declStartLine, declEndLine)
             }
           }
         }
@@ -205,20 +260,26 @@ function findFunction(
 
     // Export default: export default function foo() {}
     if (node.type === 'ExportDefaultDeclaration') {
+      const declStartLine = node.loc?.start.line || 0
+      const declEndLine = node.loc?.end.line || 0
+
       if (node.declaration.type === 'FunctionDeclaration') {
         if (node.declaration.id?.name === functionName || !node.declaration.id) {
-          checkMatch(node.declaration, node.loc?.start.line || 0)
+          checkMatch(node.declaration, declStartLine, declStartLine, declEndLine)
         }
       }
     }
 
     // Variable declaration: const foo = () => {} or const foo = function() {}
     if (node.type === 'VariableDeclaration') {
+      const declStartLine = node.loc?.start.line || 0
+      const declEndLine = node.loc?.end.line || 0
+
       for (const decl of node.declarations) {
         if (decl.id.type === 'Identifier' && decl.id.name === functionName) {
           const init = unwrapCallExpression(decl.init)
           if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') {
-            checkMatch(init, node.loc?.start.line || 0)
+            checkMatch(init, declStartLine, declStartLine, declEndLine)
           }
         }
       }
@@ -229,7 +290,9 @@ function findFunction(
       const key = node.key
       if (key.type === 'Identifier' && key.name === functionName) {
         if (node.value.type === 'FunctionExpression') {
-          checkMatch(node.value, node.loc?.start.line || 0)
+          const startLine = node.loc?.start.line || 0
+          const endLine = node.loc?.end.line || 0
+          checkMatch(node.value, startLine, startLine, endLine)
         }
       }
     }
@@ -239,7 +302,9 @@ function findFunction(
       const key = node.key
       if (key.type === 'Identifier' && key.name === functionName) {
         if (node.value.type === 'FunctionExpression' || node.value.type === 'ArrowFunctionExpression') {
-          checkMatch(node.value, node.loc?.start.line || 0)
+          const startLine = node.loc?.start.line || 0
+          const endLine = node.loc?.end.line || 0
+          checkMatch(node.value, startLine, startLine, endLine)
         }
       }
     }
@@ -264,7 +329,7 @@ function findFunction(
   traverse(ast)
 
   // Return best match found
-  return bestMatch?.node || null
+  return bestMatch?.match || null
 }
 
 /**

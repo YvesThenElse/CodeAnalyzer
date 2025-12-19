@@ -217,6 +217,9 @@ export interface FunctionLogic {
   filePath: string
   nodes: LogicNode[]
   edges: LogicEdge[]
+  sourceCode: string    // Code source complet de la fonction
+  startLine: number     // Ligne de début dans le fichier
+  endLine: number       // Ligne de fin dans le fichier
 }
 
 export interface LogicNodeData {

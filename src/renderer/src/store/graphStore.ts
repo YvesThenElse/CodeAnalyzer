@@ -77,6 +77,8 @@ interface GraphState {
   functionLogic: FunctionLogic | null
   selectedFunction: { name: string; line: number; fileId: string } | null
   loadingFunctionLogic: boolean
+  hoveredLogicNodeId: string | null
+  selectedLogicNodeId: string | null
 
   // LLM State
   llmConfig: LLMConfig | null
@@ -113,6 +115,9 @@ interface GraphState {
   drillDownToFunctionLogic: (functionName: string, functionLine: number) => Promise<void>
   goBackToCode: () => void
   setFunctionLogic: (logic: FunctionLogic | null) => void
+  setHoveredLogicNodeId: (id: string | null) => void
+  setSelectedLogicNodeId: (id: string | null) => void
+  getLogicNodeLine: (nodeId: string) => number | null
 
   // Reset
   reset: () => void
@@ -235,6 +240,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   functionLogic: null,
   selectedFunction: null,
   loadingFunctionLogic: false,
+  hoveredLogicNodeId: null,
+  selectedLogicNodeId: null,
   llmConfig: null,
   descriptions: {},
   llmLoading: false,
@@ -408,6 +415,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   setFunctionLogic: (logic) => set({ functionLogic: logic }),
 
+  setHoveredLogicNodeId: (id) => set({ hoveredLogicNodeId: id }),
+
+  setSelectedLogicNodeId: (id) => set({ selectedLogicNodeId: id }),
+
+  getLogicNodeLine: (nodeId) => {
+    const { functionLogic } = get()
+    if (!functionLogic) return null
+    const node = functionLogic.nodes.find(n => n.id === nodeId)
+    return node?.line ?? null
+  },
+
   reset: () =>
     set({
       graph: null,
@@ -427,6 +445,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       functionLogic: null,
       selectedFunction: null,
       loadingFunctionLogic: false,
+      hoveredLogicNodeId: null,
+      selectedLogicNodeId: null,
       llmConfig: null,
       descriptions: {},
       llmLoading: false,
