@@ -48,6 +48,7 @@ export interface ElectronAPI {
     getConfig: (projectPath: string) => Promise<LLMConfig | null>
     saveConfig: (projectPath: string, config: LLMConfig) => Promise<boolean>
     testConnection: (config: LLMConfig) => Promise<{ success: boolean; error?: string }>
+    countPendingFiles: (projectPath: string) => Promise<number>
     generateDescriptions: (projectPath: string, forceRegenerate?: boolean) => Promise<void>
     getDescriptions: (projectPath: string) => Promise<Record<string, FileDescription>>
     invalidateCache: (projectPath: string) => Promise<void>

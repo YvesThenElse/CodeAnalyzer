@@ -45,6 +45,8 @@ const electronAPI = {
     saveConfig: (projectPath, config) => electron.ipcRenderer.invoke("llm:saveConfig", projectPath, config),
     // Test LLM connection
     testConnection: (config) => electron.ipcRenderer.invoke("llm:testConnection", config),
+    // Count files needing description updates
+    countPendingFiles: (projectPath) => electron.ipcRenderer.invoke("llm:countPendingFiles", projectPath),
     // Generate descriptions for files
     generateDescriptions: (projectPath, forceRegenerate) => electron.ipcRenderer.invoke("llm:generateDescriptions", projectPath, forceRegenerate),
     // Get cached descriptions

@@ -171,6 +171,25 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return invalidateCache(projectPath)
   })
 
+  // Count files needing description updates
+  ipcMain.handle('llm:countPendingFiles', async (_event, projectPath: string) => {
+    const config = loadLLMConfig(projectPath)
+    if (!config) {
+      return 0
+    }
+
+    const cache = loadDescriptionCache(projectPath)
+    const sourceFiles = await scanProjectFiles(projectPath)
+
+    const filesWithContent = sourceFiles.map(file => ({
+      id: file.relativePath,
+      content: file.content
+    }))
+
+    const filesToGenerate = getFilesNeedingDescriptions(cache, filesWithContent)
+    return filesToGenerate.length
+  })
+
   // Generate descriptions for files
   ipcMain.handle('llm:generateDescriptions', async (_event, projectPath: string, forceRegenerate?: boolean) => {
     const config = loadLLMConfig(projectPath)

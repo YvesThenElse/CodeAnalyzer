@@ -19,6 +19,7 @@
 import React, { useCallback, useState, useEffect } from 'react'
 import { useGraphStore } from '../../store/graphStore'
 import { LLMConfigModal } from './LLMConfigModal'
+import { DescriptionUpdateModal } from './DescriptionUpdateModal'
 
 export function Header(): JSX.Element {
   const {
@@ -43,6 +44,8 @@ export function Header(): JSX.Element {
   } = useGraphStore()
 
   const [configModalOpen, setConfigModalOpen] = useState(false)
+  const [updateModalOpen, setUpdateModalOpen] = useState(false)
+  const [pendingFilesCount, setPendingFilesCount] = useState(0)
 
   // Setup LLM event listeners
   useEffect(() => {
@@ -104,15 +107,21 @@ export function Header(): JSX.Element {
         window.electronAPI.llm.getDescriptions(graph.rootPath).then((descriptions) => {
           if (Object.keys(descriptions).length > 0) {
             setDescriptions(descriptions)
-          } else if (config) {
-            // Auto-generate if config exists but no descriptions
-            setLLMLoading(true)
-            window.electronAPI.llm.generateDescriptions(graph.rootPath)
+          }
+
+          // Check if there are files needing updates
+          if (config) {
+            window.electronAPI.llm.countPendingFiles(graph.rootPath).then((count) => {
+              if (count > 0) {
+                setPendingFilesCount(count)
+                setUpdateModalOpen(true)
+              }
+            })
           }
         })
       })
     }
-  }, [graph?.rootPath, setLLMConfig, setDescriptions, setLLMLoading])
+  }, [graph?.rootPath, setLLMConfig, setDescriptions])
 
   const handleGenerateDescriptions = useCallback(
     async (forceRegenerate = false) => {
@@ -124,6 +133,15 @@ export function Header(): JSX.Element {
     },
     [graph?.rootPath, llmConfig, setLLMLoading, setLLMError]
   )
+
+  const handleUpdateConfirm = useCallback(() => {
+    setUpdateModalOpen(false)
+    handleGenerateDescriptions(false)
+  }, [handleGenerateDescriptions])
+
+  const handleUpdateCancel = useCallback(() => {
+    setUpdateModalOpen(false)
+  }, [])
 
   const handleSelectDirectory = useCallback(async () => {
     try {
@@ -276,6 +294,12 @@ export function Header(): JSX.Element {
       )}
 
       <LLMConfigModal open={configModalOpen} onClose={() => setConfigModalOpen(false)} />
+      <DescriptionUpdateModal
+        open={updateModalOpen}
+        pendingCount={pendingFilesCount}
+        onConfirm={handleUpdateConfirm}
+        onCancel={handleUpdateCancel}
+      />
     </div>
   )
 }

@@ -88,6 +88,9 @@ const electronAPI: ElectronAPI = {
     // Test LLM connection
     testConnection: (config: LLMConfig) => ipcRenderer.invoke('llm:testConnection', config),
 
+    // Count files needing description updates
+    countPendingFiles: (projectPath: string) => ipcRenderer.invoke('llm:countPendingFiles', projectPath),
+
     // Generate descriptions for files
     generateDescriptions: (projectPath: string, forceRegenerate?: boolean) =>
       ipcRenderer.invoke('llm:generateDescriptions', projectPath, forceRegenerate),

@@ -144,6 +144,17 @@
     }
   }
 
+  &--outline {
+    background: transparent;
+    color: @text-muted;
+    border: 1px solid @border-color;
+
+    &:hover:not(:disabled) {
+      background: @bg-primary;
+      color: @text-dark;
+    }
+  }
+
   &--danger {
     background: @danger-color;
     color: @text-light;
@@ -427,6 +438,7 @@
       margin: 0;
       font-size: @font-size-lg;
       font-weight: @font-weight-bold;
+      color: @text-dark;
     }
   }
 
@@ -457,6 +469,32 @@
     gap: @spacing-sm;
     padding: @spacing-md @spacing-lg;
     border-top: 1px solid @border-color;
+  }
+}
+
+// ===== DESCRIPTION UPDATE MODAL =====
+.description-update-modal {
+  &__message {
+    font-size: @font-size-lg;
+    color: @text-dark;
+    margin: 0 0 @spacing-md 0;
+
+    strong {
+      color: @accent-color;
+    }
+  }
+
+  &__info {
+    font-size: @font-size-sm;
+    color: @text-muted;
+    margin: 0 0 @spacing-sm 0;
+  }
+
+  &__warning {
+    font-size: @font-size-sm;
+    color: @c4-cloud-border;
+    margin: 0;
+    font-style: italic;
   }
 }
 
