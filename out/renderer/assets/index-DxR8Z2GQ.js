@@ -25746,6 +25746,7 @@ function FileTreeItem({
     {
       className: itemClasses,
       style: itemStyle,
+      "data-file-id": node.fileId,
       onClick: handleClick,
       onDoubleClick: handleDoubleClick,
       onContextMenu: handleContextMenu
@@ -25843,6 +25844,17 @@ function FileTreePanel() {
       return () => document.removeEventListener("click", handleClick);
     }
   }, [contextMenu]);
+  reactExports.useEffect(() => {
+    if (hoveredFileId) {
+      const element = document.querySelector(`[data-file-id="${hoveredFileId}"]`);
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest"
+        });
+      }
+    }
+  }, [hoveredFileId]);
   const handleToggle = reactExports.useCallback((path) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev);

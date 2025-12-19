@@ -286,6 +286,7 @@ function FileTreeItem({
       <div
         className={itemClasses}
         style={itemStyle}
+        data-file-id={node.fileId}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
@@ -421,6 +422,19 @@ export function FileTreePanel(): JSX.Element | null {
       return () => document.removeEventListener('click', handleClick)
     }
   }, [contextMenu])
+
+  // Auto-scroll vers le fichier survolé dans le diagramme
+  useEffect(() => {
+    if (hoveredFileId) {
+      const element = document.querySelector(`[data-file-id="${hoveredFileId}"]`)
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest'
+        })
+      }
+    }
+  }, [hoveredFileId])
 
   const handleToggle = useCallback((path: string) => {
     setExpandedPaths((prev) => {
