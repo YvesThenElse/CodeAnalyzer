@@ -1,12 +1,19 @@
 # CodeAnalyzer
 
-Interactive dependency graph viewer for TypeScript/JavaScript projects.
+> **Understand any codebase at a glance, without opening an IDE.**
+
+An interactive graph visualization system that lets you explore and understand the architecture, logic, and philosophy of entire projects through visual navigation. Currently supporting TypeScript/JavaScript, with the long-term vision of abstracting code logic across all programming languages - letting you understand *what* code does without needing to know *which* language it's written in.
 
 ## Description
 
-CodeAnalyzer is a desktop application that analyzes source code from TypeScript/JavaScript projects and generates interactive dependency graphs with multi-level navigation.
+CodeAnalyzer is a desktop application that analyzes source code and generates interactive dependency graphs with **three levels of navigation** - from high-level file dependencies down to the internal logic of individual functions.
 
-![Screenshot](images/screenshot.png)
+**AI-Powered Insights**: Optionally connect to LLM providers (OpenAI, Anthropic, Ollama) to automatically generate natural language descriptions for each file and component, cached locally for instant access.
+
+| Files Level | Code Level | Function Logic Level |
+|:-----------:|:----------:|:--------------------:|
+| ![Files](images/level_1.png) | ![Code](images/level_2.png) | ![Logic](images/level_3.png) |
+| *Navigate file dependencies* | *Explore declarations by type* | *Visualize function control flow* |
 
 ## Features
 
