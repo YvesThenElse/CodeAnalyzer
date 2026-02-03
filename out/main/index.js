@@ -15116,379 +15116,113 @@ function buildAdjacencyList(files, relations) {
   }
   return adjacency;
 }
-const FOLDER_BASE_HUES = [210, 150, 35, 270, 0, 330, 185, 75];
-const fileImportSources = /* @__PURE__ */ new Map();
-function buildDependencyGraph(structure, projectName, rootPath) {
-  fileImportSources.clear();
-  const fileResults = /* @__PURE__ */ new Map();
-  collectFileResults(structure, fileResults);
-  const files = /* @__PURE__ */ new Map();
-  const rootFolders = /* @__PURE__ */ new Set();
-  for (const [filePath, fileInfo] of fileResults) {
-    const relativePath = path__namespace.relative(rootPath, filePath).replace(/\\/g, "/");
-    const folder = path__namespace.dirname(relativePath);
-    const rootFolder = getRootFolder(relativePath);
-    if (rootFolder) {
-      rootFolders.add(rootFolder);
-    }
-    const importSources = [];
-    const fileNode = createFileNode(filePath, relativePath, folder, rootFolder, fileInfo, importSources);
-    files.set(fileNode.id, fileNode);
-    fileImportSources.set(fileNode.id, importSources);
-  }
-  const rootFoldersArray = Array.from(rootFolders).sort();
-  for (const file of files.values()) {
-    file.color = getFolderColor(file.rootFolder, rootFoldersArray, file.folderDepth);
-  }
-  const relations = buildImportRelationsWithSources(files);
-  const folderClusters = buildFolderClusters(files, rootFoldersArray);
-  const communityClusters = buildCommunityClusters(files, relations);
-  const stats = calculateStats(files, relations);
-  const graph = {
-    rootPath,
-    name: projectName,
-    analyzedAt: /* @__PURE__ */ new Date(),
-    files,
-    relations,
-    clusters: {
-      [ClusteringMode.FOLDER]: folderClusters,
-      [ClusteringMode.COMMUNITY]: communityClusters
-    },
-    rootFolders: rootFoldersArray,
-    stats
-  };
-  return serializeGraph(graph);
-}
-function collectFileResults(structure, results) {
-  if (structure.type === "file" && structure.fileInfo) {
-    results.set(structure.path, structure.fileInfo);
-  }
-  if (structure.children) {
-    for (const child of structure.children) {
-      collectFileResults(child, results);
+class ParserRegistry {
+  parsers = /* @__PURE__ */ new Map();
+  resolvers = /* @__PURE__ */ new Map();
+  extensionToParser = /* @__PURE__ */ new Map();
+  extensionToLanguage = /* @__PURE__ */ new Map();
+  /**
+   * Register a language parser
+   */
+  registerParser(parser2) {
+    this.parsers.set(parser2.languageId, parser2);
+    for (const ext of parser2.getSupportedExtensions()) {
+      const normalizedExt = ext.toLowerCase();
+      this.extensionToParser.set(normalizedExt, parser2);
+      this.extensionToLanguage.set(normalizedExt, parser2.languageId);
     }
   }
-}
-function getRootFolder(relativePath) {
-  const parts = relativePath.split("/");
-  if (parts[0] === "src" && parts.length > 1) {
-    return parts[1];
+  /**
+   * Register an import resolver
+   */
+  registerResolver(resolver) {
+    this.resolvers.set(resolver.languageId, resolver);
   }
-  return parts[0];
-}
-function getFolderDepth(folder, rootFolder) {
-  if (!folder || folder === "." || folder === rootFolder) return 0;
-  const folderParts = folder.split("/");
-  const rootIndex = folderParts.indexOf(rootFolder);
-  if (rootIndex === -1) return 0;
-  return folderParts.length - rootIndex - 1;
-}
-function getFolderColor(rootFolder, rootFolders, depth2) {
-  const rootIndex = rootFolders.indexOf(rootFolder);
-  const colorIndex = rootIndex >= 0 ? rootIndex : 0;
-  const hue = FOLDER_BASE_HUES[colorIndex % FOLDER_BASE_HUES.length];
-  const saturation = 70;
-  const lightness = Math.min(45 + depth2 * 10, 80);
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-function createFileNode(filePath, relativePath, folder, rootFolder, fileInfo, internalImportsOut) {
-  const fileName = path__namespace.basename(filePath);
-  const fileType = getFileType(fileName);
-  const codeItems = fileInfo.allDeclarations.map(
-    (decl) => declarationToCodeItem(decl, filePath)
-  );
-  const internalImports = fileInfo.imports.filter((imp) => !imp.isExternal);
-  for (const imp of internalImports) {
-    internalImportsOut.push({
-      source: imp.source,
-      specifiers: imp.specifiers,
-      line: imp.line
-    });
+  /**
+   * Get parser for a specific language
+   */
+  getParser(languageId) {
+    return this.parsers.get(languageId);
   }
-  const imports = internalImports.map((imp) => ({
-    targetFileId: "",
-    // Will be resolved later
-    specifiers: imp.specifiers,
-    line: imp.line
-  }));
-  const externalImports = fileInfo.imports.filter((imp) => imp.isExternal).map((imp) => imp.source);
-  return {
-    id: relativePath,
-    // Use relative path as ID for easier matching
-    filePath,
-    relativePath,
-    fileName,
-    folder,
-    folderDepth: getFolderDepth(folder, rootFolder),
-    rootFolder,
-    type: fileType,
-    codeItems,
-    imports,
-    externalImports,
-    color: ""
-    // Will be set later
-  };
-}
-function getFileType(fileName) {
-  if (fileName === "index.ts" || fileName === "index.tsx" || fileName === "index.js" || fileName === "index.jsx") {
-    return "index_file";
+  /**
+   * Get resolver for a specific language
+   */
+  getResolver(languageId) {
+    return this.resolvers.get(languageId);
   }
-  if (fileName.includes(".test.") || fileName.includes(".spec.") || fileName.includes("__tests__")) {
-    return "test_file";
+  /**
+   * Get parser for a file based on its extension
+   */
+  getParserForFile(filePath) {
+    const ext = path__namespace.extname(filePath).toLowerCase();
+    return this.extensionToParser.get(ext);
   }
-  if (fileName.endsWith(".config.ts") || fileName.endsWith(".config.js") || fileName === "tsconfig.json") {
-    return "config_file";
+  /**
+   * Get language ID for a file based on its extension
+   */
+  getLanguageForFile(filePath) {
+    const ext = path__namespace.extname(filePath).toLowerCase();
+    return this.extensionToLanguage.get(ext);
   }
-  return "source_file";
-}
-function declarationToCodeItem(decl, filePath) {
-  let type2;
-  if (decl.isReactComponent) {
-    type2 = "react_component";
-  } else if (decl.isHook) {
-    type2 = "hook";
-  } else if (decl.type === "function") {
-    type2 = "function";
-  } else if (decl.type === "class") {
-    type2 = "class";
-  } else if (decl.type === "interface") {
-    type2 = "interface";
-  } else if (decl.type === "type") {
-    type2 = "type";
-  } else {
-    type2 = "const";
-  }
-  return {
-    id: `${filePath}:${decl.name}:${decl.line}`,
-    name: decl.name,
-    type: type2,
-    isExported: decl.isExported,
-    isDefault: decl.isDefault,
-    line: decl.line,
-    signature: decl.signature
-  };
-}
-function buildImportRelationsWithSources(files, rootPath) {
-  const relations = [];
-  const seenRelations = /* @__PURE__ */ new Set();
-  for (const file of files.values()) {
-    const importSources = fileImportSources.get(file.id) || [];
-    for (let i = 0; i < importSources.length; i++) {
-      const importInfo = importSources[i];
-      const targetFileId = resolveImportPath(
-        importInfo.source,
-        file.folder,
-        files
-      );
-      if (targetFileId && targetFileId !== file.id) {
-        const relationKey = `${file.id}->${targetFileId}`;
-        if (!seenRelations.has(relationKey)) {
-          seenRelations.add(relationKey);
-          if (file.imports[i]) {
-            file.imports[i].targetFileId = targetFileId;
-          }
-          relations.push({
-            id: relationKey,
-            sourceFileId: file.id,
-            targetFileId,
-            specifiers: importInfo.specifiers,
-            label: importInfo.specifiers.length > 0 ? `{ ${importInfo.specifiers.slice(0, 3).join(", ")}${importInfo.specifiers.length > 3 ? "..." : ""} }` : "imports"
-          });
-        }
-      }
+  /**
+   * Get resolver for a file based on its extension
+   */
+  getResolverForFile(filePath) {
+    const languageId = this.getLanguageForFile(filePath);
+    if (languageId) {
+      return this.resolvers.get(languageId);
     }
+    return void 0;
   }
-  return relations;
-}
-function resolveAliasPath(importSource) {
-  if (importSource.startsWith("@/")) {
-    return "src/" + importSource.slice(2);
+  /**
+   * Check if a file can be parsed by any registered parser
+   */
+  canParse(filePath) {
+    const parser2 = this.getParserForFile(filePath);
+    return parser2 !== void 0 && parser2.canParse(filePath);
   }
-  if (importSource.startsWith("@src/")) {
-    return "src/" + importSource.slice(5);
-  }
-  if (importSource.startsWith("~/")) {
-    return "src/" + importSource.slice(2);
-  }
-  if (importSource.startsWith("@renderer/")) {
-    return "src/renderer/" + importSource.slice(10);
-  }
-  if (importSource.startsWith("@main/")) {
-    return "src/main/" + importSource.slice(6);
-  }
-  const commonFolderAliases = [
-    "components",
-    "utils",
-    "hooks",
-    "stores",
-    "store",
-    "types",
-    "services",
-    "lib",
-    "api",
-    "assets",
-    "styles",
-    "config",
-    "helpers",
-    "constants",
-    "context",
-    "contexts",
-    "features",
-    "pages",
-    "views",
-    "layouts",
-    "shared",
-    "common",
-    "modules"
-  ];
-  for (const folder of commonFolderAliases) {
-    const aliasPattern = `@${folder}/`;
-    if (importSource.startsWith(aliasPattern)) {
-      return "src/" + folder + "/" + importSource.slice(aliasPattern.length);
-    }
-  }
-  if (importSource.startsWith("#/")) {
-    return "src/" + importSource.slice(2);
-  }
-  if (importSource.startsWith("src/")) {
-    return importSource;
-  }
-  return null;
-}
-function resolveImportPath(importSource, sourceFolder, files) {
-  let resolvedPath;
-  if (importSource.startsWith("./")) {
-    resolvedPath = path__namespace.join(sourceFolder, importSource.slice(2)).replace(/\\/g, "/");
-  } else if (importSource.startsWith("../")) {
-    resolvedPath = path__namespace.join(sourceFolder, importSource).replace(/\\/g, "/");
-  } else if (importSource.startsWith("/")) {
-    resolvedPath = importSource.slice(1);
-  } else {
-    const aliasResolved = resolveAliasPath(importSource);
-    if (aliasResolved) {
-      resolvedPath = aliasResolved;
-    } else {
+  /**
+   * Parse a file using the appropriate parser
+   */
+  async parseFile(filePath) {
+    const parser2 = this.getParserForFile(filePath);
+    if (!parser2) {
       return null;
     }
+    return parser2.parseFile(filePath);
   }
-  const extensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
-  for (const ext of extensions) {
-    const candidate = resolvedPath + ext;
-    if (files.has(candidate)) {
-      return candidate;
-    }
+  /**
+   * Get all supported file extensions
+   */
+  getAllSupportedExtensions() {
+    return Array.from(this.extensionToParser.keys());
   }
-  if (resolvedPath.startsWith("src/")) {
-    const withoutSrc = resolvedPath.slice(4);
-    for (const ext of extensions) {
-      const candidate = withoutSrc + ext;
-      if (files.has(candidate)) {
-        return candidate;
-      }
-    }
+  /**
+   * Get all registered language IDs
+   */
+  getRegisteredLanguages() {
+    return Array.from(this.parsers.keys());
   }
-  if (!resolvedPath.startsWith("src/")) {
-    const withSrc = "src/" + resolvedPath;
-    for (const ext of extensions) {
-      const candidate = withSrc + ext;
-      if (files.has(candidate)) {
-        return candidate;
-      }
-    }
+  /**
+   * Check if a specific language is registered
+   */
+  hasLanguage(languageId) {
+    return this.parsers.has(languageId);
   }
-  return null;
+  /**
+   * Check if a file extension is supported
+   */
+  isExtensionSupported(ext) {
+    const normalizedExt = ext.toLowerCase().startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+    return this.extensionToParser.has(normalizedExt);
+  }
 }
-function buildFolderClusters(files, rootFolders) {
-  const clusterMap = /* @__PURE__ */ new Map();
-  for (const file of files.values()) {
-    const clusterKey = file.folder || "root";
-    const existing = clusterMap.get(clusterKey) || [];
-    existing.push(file.id);
-    clusterMap.set(clusterKey, existing);
+let registryInstance = null;
+function getParserRegistry() {
+  if (!registryInstance) {
+    registryInstance = new ParserRegistry();
   }
-  const clusters = [];
-  for (const [folderPath, fileIds] of clusterMap) {
-    const rootFolder = getRootFolder(folderPath + "/dummy");
-    const depth2 = getFolderDepth(folderPath, rootFolder);
-    clusters.push({
-      id: `folder-${folderPath}`,
-      name: path__namespace.basename(folderPath) || "root",
-      folderPath,
-      fileIds,
-      color: getFolderColor(rootFolder, rootFolders, depth2),
-      depth: depth2,
-      mode: ClusteringMode.FOLDER
-    });
-  }
-  return clusters.sort((a, b) => a.folderPath.localeCompare(b.folderPath));
-}
-function buildCommunityClusters(files, relations) {
-  const communities = detectCommunities(files, relations);
-  const clusters = [];
-  new Set(communities.values()).size;
-  const communityGroups = /* @__PURE__ */ new Map();
-  for (const [fileId, communityId] of communities) {
-    const existing = communityGroups.get(communityId) || [];
-    existing.push(fileId);
-    communityGroups.set(communityId, existing);
-    const file = files.get(fileId);
-    if (file) {
-      file.communityId = communityId;
-    }
-  }
-  let index = 0;
-  for (const [communityId, fileIds] of communityGroups) {
-    const goldenRatio = 0.618033988749895;
-    const hue = Math.round(index * goldenRatio % 1 * 360);
-    clusters.push({
-      id: communityId,
-      name: `Group ${index + 1}`,
-      folderPath: "",
-      fileIds,
-      color: `hsl(${hue}, 65%, 55%)`,
-      depth: 0,
-      mode: ClusteringMode.COMMUNITY
-    });
-    index++;
-  }
-  return clusters;
-}
-function calculateStats(files, relations) {
-  const totalFiles = files.size;
-  const totalCodeItems = Array.from(files.values()).reduce(
-    (sum, file) => sum + file.codeItems.length,
-    0
-  );
-  const totalImports = relations.length;
-  const averageImportsPerFile = totalFiles > 0 ? totalImports / totalFiles : 0;
-  const connectionCount = /* @__PURE__ */ new Map();
-  for (const rel of relations) {
-    connectionCount.set(rel.sourceFileId, (connectionCount.get(rel.sourceFileId) || 0) + 1);
-    connectionCount.set(rel.targetFileId, (connectionCount.get(rel.targetFileId) || 0) + 1);
-  }
-  const mostConnectedFiles = Array.from(connectionCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([fileId]) => fileId);
-  return {
-    totalFiles,
-    totalCodeItems,
-    totalImports,
-    averageImportsPerFile: Math.round(averageImportsPerFile * 100) / 100,
-    mostConnectedFiles
-  };
-}
-function serializeGraph(graph) {
-  return {
-    rootPath: graph.rootPath,
-    name: graph.name,
-    analyzedAt: graph.analyzedAt.toISOString(),
-    files: Array.from(graph.files.entries()),
-    relations: graph.relations,
-    clusters: {
-      folder: graph.clusters[ClusteringMode.FOLDER],
-      community: graph.clusters[ClusteringMode.COMMUNITY]
-    },
-    rootFolders: graph.rootFolders,
-    stats: graph.stats
-  };
+  return registryInstance;
 }
 var dist$6 = {};
 var clearCaches$1 = {};
@@ -134005,7 +133739,7 @@ ${lanes.join("\n")}
         if (!node2.name && defaultExportBinding) {
           return node2;
         }
-        const isExported2 = hasSyntacticModifier(
+        const isExported22 = hasSyntacticModifier(
           node2,
           32
           /* Export */
@@ -134019,7 +133753,7 @@ ${lanes.join("\n")}
         if (node2.name) {
           hoistBindingIdentifier(
             factory2.getLocalName(node2),
-            isExported2 && !isDefault,
+            isExported22 && !isDefault,
             /*exportAlias*/
             void 0,
             node2
@@ -134066,13 +133800,13 @@ ${lanes.join("\n")}
       }
       function hoistVariableStatement(node2) {
         let expressions;
-        const isExported2 = hasSyntacticModifier(
+        const isExported22 = hasSyntacticModifier(
           node2,
           32
           /* Export */
         );
         for (const variable of node2.declarationList.declarations) {
-          hoistBindingElement(variable, isExported2, variable);
+          hoistBindingElement(variable, isExported22, variable);
           if (variable.initializer) {
             expressions = append(expressions, hoistInitializedVariable(variable));
           }
@@ -175534,7 +175268,7 @@ interface Symbol {
     }
     function addExports(sourceFile, toMove, needExport, useEs6Exports) {
       return flatMap(toMove, (statement) => {
-        if (isTopLevelDeclarationStatement(statement) && !isExported(sourceFile, statement, useEs6Exports) && forEachTopLevelDeclaration(statement, (d) => {
+        if (isTopLevelDeclarationStatement(statement) && !isExported2(sourceFile, statement, useEs6Exports) && forEachTopLevelDeclaration(statement, (d) => {
           var _a;
           return needExport.includes(Debug.checkDefined((_a = tryCast(d, canHaveSymbol)) == null ? void 0 : _a.symbol));
         })) {
@@ -175544,7 +175278,7 @@ interface Symbol {
         return getSynthesizedDeepClone(statement);
       });
     }
-    function isExported(sourceFile, decl, useEs6Exports, name) {
+    function isExported2(sourceFile, decl, useEs6Exports, name) {
       var _a;
       if (useEs6Exports) {
         return !isExpressionStatement(decl) && hasSyntacticModifier(
@@ -175697,7 +175431,7 @@ interface Symbol {
       }
     }
     function addExportToChanges(sourceFile, decl, name, changes, useEs6Exports) {
-      if (isExported(sourceFile, decl, useEs6Exports, name)) return;
+      if (isExported2(sourceFile, decl, useEs6Exports, name)) return;
       if (useEs6Exports) {
         if (!isExpressionStatement(decl)) changes.insertExportModifier(sourceFile, decl);
       } else {
@@ -200671,7 +200405,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
                 }
                 break;
               case 206:
-                if (!isAvailableThroughGlobal && direct.isTypeOf && !direct.qualifier && isExported2(direct)) {
+                if (!isAvailableThroughGlobal && direct.isTypeOf && !direct.qualifier && isExported22(direct)) {
                   addIndirectUser(
                     direct.getSourceFile(),
                     /*addTransitiveDependencies*/
@@ -200691,14 +200425,14 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         addIndirectUser(
           top,
           /** addTransitiveDependencies */
-          !!isExported2(
+          !!isExported22(
             importCall,
             /*stopAtAmbientModule*/
             true
           )
         );
       }
-      function isExported2(node2, stopAtAmbientModule = false) {
+      function isExported22(node2, stopAtAmbientModule = false) {
         return findAncestor(node2, (node22) => {
           if (stopAtAmbientModule && isAmbientModuleDeclaration(node22)) return "quit";
           return canHaveModifiers(node22) && some(node22.modifiers, isExportModifier);
@@ -200758,11 +200492,11 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
       }
       if (directImports) {
         for (const decl of directImports) {
-          handleImport2(decl);
+          handleImport(decl);
         }
       }
       return { importSearches, singleReferences };
-      function handleImport2(decl) {
+      function handleImport(decl) {
         if (decl.kind === 272) {
           if (isExternalModuleImportEquals(decl)) {
             handleNamespaceImportLike(decl.name);
@@ -241670,612 +241404,1499 @@ function withoutProjectParserOptions(opts) {
     return withoutProjectParserOptions_1.withoutProjectParserOptions;
   } });
 })(dist$6);
-function createEmptyResultWithError(filePath, error2) {
-  return {
-    filePath,
-    exports: [],
-    imports: [],
-    components: [],
-    hooks: [],
-    apiCalls: [],
-    allDeclarations: [],
-    errors: [error2]
-  };
-}
-function extractLocationFromError(error2) {
-  const lineColMatch = error2.message.match(/line\s+(\d+)/i);
-  const parenMatch = error2.message.match(/\((\d+):(\d+)\)/);
-  if (parenMatch) {
-    return { line: parseInt(parenMatch[1], 10), column: parseInt(parenMatch[2], 10) };
-  }
-  if (lineColMatch) {
-    const colMatch = error2.message.match(/column\s+(\d+)/i);
-    return {
-      line: parseInt(lineColMatch[1], 10),
-      column: colMatch ? parseInt(colMatch[1], 10) : void 0
-    };
-  }
-  if ("lineNumber" in error2 && typeof error2.lineNumber === "number") {
-    return {
-      line: error2.lineNumber,
-      column: "column" in error2 && typeof error2.column === "number" ? error2.column : void 0
-    };
-  }
-  return { line: 0 };
-}
-function sanitizeErrorMessage(message) {
-  return message.replace(/at\s+.*:\d+:\d+/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
-}
-async function parseFile(filePath) {
-  const result = {
-    filePath,
-    exports: [],
-    imports: [],
-    components: [],
-    hooks: [],
-    apiCalls: [],
-    allDeclarations: [],
-    errors: []
-  };
-  let code2;
-  try {
-    code2 = await fs__namespace.readFile(filePath, "utf-8");
-  } catch (readError) {
-    const err = readError;
-    let errorType = "read";
-    let message = "Failed to read file";
-    if (err.code === "ENOENT") {
-      message = "File not found";
-    } else if (err.code === "EACCES") {
-      message = "Permission denied";
-    } else if (err.code === "EISDIR") {
-      message = "Path is a directory, not a file";
-    } else if (err.code === "EMFILE" || err.code === "ENFILE") {
-      message = "Too many open files";
-    } else if (err.message) {
-      message = sanitizeErrorMessage(err.message);
-    }
-    return createEmptyResultWithError(filePath, {
-      type: errorType,
-      file: filePath,
-      line: 0,
-      message,
-      details: err.code
-    });
-  }
-  if (code2.includes("\0")) {
-    return createEmptyResultWithError(filePath, {
-      type: "encoding",
-      file: filePath,
-      line: 0,
-      message: "File appears to be binary or has invalid encoding"
-    });
-  }
-  let ast2;
-  try {
-    ast2 = dist$6.parse(code2, {
-      jsx: true,
-      loc: true,
-      range: true,
-      errorOnUnknownASTType: false,
-      errorOnTypeScriptSyntacticAndSemanticIssues: false
-    });
-  } catch (parseError) {
-    const err = parseError;
-    const location = extractLocationFromError(err);
-    let contextLine = "";
-    if (location.line > 0) {
-      const lines = code2.split("\n");
-      if (location.line <= lines.length) {
-        contextLine = lines[location.line - 1]?.trim().slice(0, 50);
-      }
-    }
-    result.errors?.push({
-      type: "syntax",
-      file: filePath,
-      line: location.line,
-      column: location.column,
-      message: sanitizeErrorMessage(err.message),
-      details: contextLine ? `Near: "${contextLine}"` : void 0
-    });
-    return result;
-  }
-  try {
-    traverseAST(ast2, result);
-  } catch (traverseError) {
-    const err = traverseError;
-    result.errors?.push({
-      type: "traversal",
-      file: filePath,
-      line: 0,
-      message: `AST traversal error: ${sanitizeErrorMessage(err.message)}`
-    });
-  }
-  try {
-    identifyReactElements(result);
-  } catch (postProcessError) {
-    const err = postProcessError;
-    result.errors?.push({
-      type: "unknown",
-      file: filePath,
-      line: 0,
-      message: `Post-processing error: ${sanitizeErrorMessage(err.message)}`
-    });
-  }
-  return result;
-}
-function traverseAST(node2, result, isExported = false) {
-  switch (node2.type) {
-    case "ImportDeclaration":
-      handleImport(node2, result);
-      break;
-    case "ExportNamedDeclaration":
-      handleExportNamed(node2, result);
-      break;
-    case "ExportDefaultDeclaration":
-      handleExportDefault(node2, result);
-      break;
-    case "CallExpression":
-      handleCallExpression(node2, result);
-      break;
-    case "FunctionDeclaration":
-      handleFunctionDeclaration(node2, result, isExported);
-      break;
-    case "ClassDeclaration":
-      handleClassDeclaration(node2, result, isExported);
-      break;
-    case "VariableDeclaration":
-      handleVariableDeclaration(node2, result, isExported);
-      break;
-    case "TSTypeAliasDeclaration":
-      handleTypeAlias(node2, result, isExported);
-      break;
-    case "TSInterfaceDeclaration":
-      handleInterface(node2, result, isExported);
-      break;
-    case "TSEnumDeclaration":
-      handleEnum(node2, result, isExported);
-      break;
-  }
-  for (const key of Object.keys(node2)) {
-    const child = node2[key];
-    if (child && typeof child === "object") {
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (item && typeof item === "object" && "type" in item) {
-            traverseAST(item, result);
-          }
-        }
-      } else if ("type" in child) {
-        traverseAST(child, result);
-      }
-    }
-  }
-}
+const ALIAS_PATTERNS = [
+  /^@\//,
+  // @/ - root alias
+  /^@[a-z][a-z0-9-]*\//i,
+  // @components/, @utils/, @renderer/, etc. (but not @scope/pkg)
+  /^~\//,
+  // ~/ - home alias
+  /^#\//,
+  // #/ - alternative alias
+  /^src\//,
+  // src/ - direct src reference
+  /^app\//,
+  // app/ - Next.js app directory
+  /^lib\//,
+  // lib/ - common lib folder
+  /^utils\//,
+  // utils/ - utils folder
+  /^components\//,
+  // components/ - components folder
+  /^hooks\//,
+  // hooks/ - hooks folder
+  /^stores\//,
+  // stores/ - stores folder
+  /^services\//,
+  // services/ - services folder
+  /^types\//
+  // types/ - types folder
+];
+const KNOWN_NPM_SCOPES = [
+  "@types/",
+  "@babel/",
+  "@emotion/",
+  "@mui/",
+  "@chakra-ui/",
+  "@radix-ui/",
+  "@tanstack/",
+  "@trpc/",
+  "@prisma/",
+  "@nestjs/",
+  "@angular/",
+  "@vue/",
+  "@nuxt/",
+  "@svelte/",
+  "@testing-library/",
+  "@storybook/",
+  "@typescript-eslint/",
+  "@eslint/",
+  "@vitejs/",
+  "@aws-sdk/",
+  "@azure/",
+  "@google-cloud/",
+  "@firebase/",
+  "@supabase/",
+  "@stripe/",
+  "@sendgrid/",
+  "@xyflow/",
+  "@electron-toolkit/",
+  "@electron/"
+];
+const COMMON_FOLDER_ALIASES = [
+  "components",
+  "utils",
+  "hooks",
+  "stores",
+  "store",
+  "types",
+  "services",
+  "lib",
+  "api",
+  "assets",
+  "styles",
+  "config",
+  "helpers",
+  "constants",
+  "context",
+  "contexts",
+  "features",
+  "pages",
+  "views",
+  "layouts",
+  "shared",
+  "common",
+  "modules"
+];
 function isPathAlias(source2) {
-  const aliasPatterns = [
-    /^@\//,
-    // @/ - root alias
-    /^@[a-z][a-z0-9-]*\//i,
-    // @components/, @utils/, @renderer/, etc. (but not @scope/pkg)
-    /^~\//,
-    // ~/ - home alias
-    /^#\//,
-    // #/ - alternative alias
-    /^src\//,
-    // src/ - direct src reference
-    /^app\//,
-    // app/ - Next.js app directory
-    /^lib\//,
-    // lib/ - common lib folder
-    /^utils\//,
-    // utils/ - utils folder
-    /^components\//,
-    // components/ - components folder
-    /^hooks\//,
-    // hooks/ - hooks folder
-    /^stores\//,
-    // stores/ - stores folder
-    /^services\//,
-    // services/ - services folder
-    /^types\//
-    // types/ - types folder
-  ];
   const scopedPackagePattern = /^@[a-z][a-z0-9-]*\/[a-z]/i;
   if (scopedPackagePattern.test(source2)) {
-    const knownNpmScopes = [
-      "@types/",
-      "@babel/",
-      "@emotion/",
-      "@mui/",
-      "@chakra-ui/",
-      "@radix-ui/",
-      "@tanstack/",
-      "@trpc/",
-      "@prisma/",
-      "@nestjs/",
-      "@angular/",
-      "@vue/",
-      "@nuxt/",
-      "@svelte/",
-      "@testing-library/",
-      "@storybook/",
-      "@typescript-eslint/",
-      "@eslint/",
-      "@vitejs/",
-      "@aws-sdk/",
-      "@azure/",
-      "@google-cloud/",
-      "@firebase/",
-      "@supabase/",
-      "@stripe/",
-      "@sendgrid/",
-      "@xyflow/",
-      "@electron-toolkit/",
-      "@electron/"
-    ];
-    if (knownNpmScopes.some((scope2) => source2.startsWith(scope2))) {
+    if (KNOWN_NPM_SCOPES.some((scope2) => source2.startsWith(scope2))) {
       return false;
     }
   }
-  return aliasPatterns.some((pattern2) => pattern2.test(source2));
+  return ALIAS_PATTERNS.some((pattern2) => pattern2.test(source2));
 }
-function handleImport(node2, result) {
-  const source2 = node2.source.value;
-  const isRelative = source2.startsWith(".") || source2.startsWith("/");
-  const isAlias = isPathAlias(source2);
-  const isExternal = !isRelative && !isAlias;
-  const specifiers = node2.specifiers.map((spec) => {
-    if (spec.type === "ImportDefaultSpecifier") {
-      return "default";
-    } else if (spec.type === "ImportNamespaceSpecifier") {
-      return "*";
-    } else {
-      return spec.local.name;
+class TypeScriptParser {
+  languageId = "typescript";
+  supportedExtensions = [".ts", ".tsx", ".js", ".jsx"];
+  getSupportedExtensions() {
+    return this.supportedExtensions;
+  }
+  canParse(filePath) {
+    const ext = path__namespace.extname(filePath).toLowerCase();
+    return this.supportedExtensions.includes(ext);
+  }
+  async parseFile(filePath) {
+    const result = {
+      filePath,
+      exports: [],
+      imports: [],
+      components: [],
+      hooks: [],
+      apiCalls: [],
+      allDeclarations: [],
+      errors: [],
+      languageMetadata: {
+        language: filePath.endsWith(".js") || filePath.endsWith(".jsx") ? "javascript" : "typescript"
+      }
+    };
+    let code2;
+    try {
+      code2 = await fs__namespace.readFile(filePath, "utf-8");
+    } catch (readError) {
+      const err = readError;
+      let message = "Failed to read file";
+      if (err.code === "ENOENT") {
+        message = "File not found";
+      } else if (err.code === "EACCES") {
+        message = "Permission denied";
+      } else if (err.code === "EISDIR") {
+        message = "Path is a directory, not a file";
+      } else if (err.code === "EMFILE" || err.code === "ENFILE") {
+        message = "Too many open files";
+      } else if (err.message) {
+        message = this.sanitizeErrorMessage(err.message);
+      }
+      return this.createEmptyResultWithError(filePath, {
+        type: "read",
+        file: filePath,
+        line: 0,
+        message,
+        details: err.code
+      });
     }
-  });
-  result.imports.push({
-    source: source2,
-    specifiers,
-    isExternal,
-    line: node2.loc.start.line
-  });
-}
-function handleExportNamed(node2, result) {
-  if (!node2.declaration) return;
-  const declaration = node2.declaration;
-  if (declaration.type === "FunctionDeclaration" && declaration.id) {
-    const name = declaration.id.name;
-    result.exports.push({
-      name,
-      type: "function",
-      isReactComponent: false,
-      // Will be determined later
-      isHook: isHookName(name),
-      line: declaration.loc.start.line
-    });
-    result.allDeclarations.push({
-      name,
-      type: "function",
-      isExported: true,
-      isDefault: false,
-      isReactComponent: isComponentName(name),
-      isHook: isHookName(name),
-      line: declaration.loc.start.line,
-      signature: buildFunctionSignature(declaration)
-    });
-  } else if (declaration.type === "ClassDeclaration" && declaration.id) {
-    const name = declaration.id.name;
-    result.exports.push({
-      name,
-      type: "class",
-      isReactComponent: false,
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-    result.allDeclarations.push({
-      name,
-      type: "class",
-      isExported: true,
-      isDefault: false,
-      isReactComponent: isComponentName(name),
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-  } else if (declaration.type === "VariableDeclaration") {
-    for (const decl of declaration.declarations) {
-      if (decl.id.type === "Identifier") {
-        const name = decl.id.name;
-        const isArrowFunction = decl.init?.type === "ArrowFunctionExpression" || decl.init?.type === "FunctionExpression";
-        result.exports.push({
-          name,
-          type: isArrowFunction ? "function" : "const",
-          isReactComponent: false,
-          isHook: isHookName(name),
-          line: decl.loc.start.line
-        });
-        const declType = isArrowFunction ? "function" : "const";
-        result.allDeclarations.push({
-          name,
-          type: declType,
-          isExported: true,
-          isDefault: false,
-          isReactComponent: isArrowFunction && isComponentName(name),
-          isHook: isArrowFunction && isHookName(name),
-          line: decl.loc.start.line,
-          signature: isArrowFunction ? buildArrowSignature(decl.init) : void 0
-        });
+    if (code2.includes("\0")) {
+      return this.createEmptyResultWithError(filePath, {
+        type: "encoding",
+        file: filePath,
+        line: 0,
+        message: "File appears to be binary or has invalid encoding"
+      });
+    }
+    let ast2;
+    try {
+      ast2 = dist$6.parse(code2, {
+        jsx: true,
+        loc: true,
+        range: true,
+        errorOnUnknownASTType: false,
+        errorOnTypeScriptSyntacticAndSemanticIssues: false
+      });
+    } catch (parseError) {
+      const err = parseError;
+      const location = this.extractLocationFromError(err);
+      let contextLine = "";
+      if (location.line > 0) {
+        const lines = code2.split("\n");
+        if (location.line <= lines.length) {
+          contextLine = lines[location.line - 1]?.trim().slice(0, 50);
+        }
+      }
+      result.errors?.push({
+        type: "syntax",
+        file: filePath,
+        line: location.line,
+        column: location.column,
+        message: this.sanitizeErrorMessage(err.message),
+        details: contextLine ? `Near: "${contextLine}"` : void 0
+      });
+      return result;
+    }
+    try {
+      this.traverseAST(ast2, result);
+    } catch (traverseError) {
+      const err = traverseError;
+      result.errors?.push({
+        type: "traversal",
+        file: filePath,
+        line: 0,
+        message: `AST traversal error: ${this.sanitizeErrorMessage(err.message)}`
+      });
+    }
+    try {
+      this.identifyReactElements(result);
+    } catch (postProcessError) {
+      const err = postProcessError;
+      result.errors?.push({
+        type: "unknown",
+        file: filePath,
+        line: 0,
+        message: `Post-processing error: ${this.sanitizeErrorMessage(err.message)}`
+      });
+    }
+    return result;
+  }
+  createEmptyResultWithError(filePath, error2) {
+    return {
+      filePath,
+      exports: [],
+      imports: [],
+      components: [],
+      hooks: [],
+      apiCalls: [],
+      allDeclarations: [],
+      errors: [error2],
+      languageMetadata: {
+        language: filePath.endsWith(".js") || filePath.endsWith(".jsx") ? "javascript" : "typescript"
+      }
+    };
+  }
+  extractLocationFromError(error2) {
+    const lineColMatch = error2.message.match(/line\s+(\d+)/i);
+    const parenMatch = error2.message.match(/\((\d+):(\d+)\)/);
+    if (parenMatch) {
+      return { line: parseInt(parenMatch[1], 10), column: parseInt(parenMatch[2], 10) };
+    }
+    if (lineColMatch) {
+      const colMatch = error2.message.match(/column\s+(\d+)/i);
+      return {
+        line: parseInt(lineColMatch[1], 10),
+        column: colMatch ? parseInt(colMatch[1], 10) : void 0
+      };
+    }
+    if ("lineNumber" in error2 && typeof error2.lineNumber === "number") {
+      return {
+        line: error2.lineNumber,
+        column: "column" in error2 && typeof error2.column === "number" ? error2.column : void 0
+      };
+    }
+    return { line: 0 };
+  }
+  sanitizeErrorMessage(message) {
+    return message.replace(/at\s+.*:\d+:\d+/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+  }
+  traverseAST(node2, result, isExported2 = false) {
+    switch (node2.type) {
+      case "ImportDeclaration":
+        this.handleImport(node2, result);
+        break;
+      case "ExportNamedDeclaration":
+        this.handleExportNamed(node2, result);
+        break;
+      case "ExportDefaultDeclaration":
+        this.handleExportDefault(node2, result);
+        break;
+      case "CallExpression":
+        this.handleCallExpression(node2, result);
+        break;
+      case "FunctionDeclaration":
+        this.handleFunctionDeclaration(node2, result, isExported2);
+        break;
+      case "ClassDeclaration":
+        this.handleClassDeclaration(node2, result, isExported2);
+        break;
+      case "VariableDeclaration":
+        this.handleVariableDeclaration(node2, result, isExported2);
+        break;
+      case "TSTypeAliasDeclaration":
+        this.handleTypeAlias(node2, result, isExported2);
+        break;
+      case "TSInterfaceDeclaration":
+        this.handleInterface(node2, result, isExported2);
+        break;
+      case "TSEnumDeclaration":
+        this.handleEnum(node2, result, isExported2);
+        break;
+    }
+    for (const key of Object.keys(node2)) {
+      const child = node2[key];
+      if (child && typeof child === "object") {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === "object" && "type" in item) {
+              this.traverseAST(item, result);
+            }
+          }
+        } else if ("type" in child) {
+          this.traverseAST(child, result);
+        }
       }
     }
-  } else if (declaration.type === "TSTypeAliasDeclaration") {
-    result.allDeclarations.push({
-      name: declaration.id.name,
-      type: "type",
-      isExported: true,
-      isDefault: false,
-      isReactComponent: false,
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-  } else if (declaration.type === "TSInterfaceDeclaration") {
-    result.allDeclarations.push({
-      name: declaration.id.name,
-      type: "interface",
-      isExported: true,
-      isDefault: false,
-      isReactComponent: false,
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-  } else if (declaration.type === "TSEnumDeclaration") {
-    result.allDeclarations.push({
-      name: declaration.id.name,
-      type: "enum",
-      isExported: true,
-      isDefault: false,
-      isReactComponent: false,
-      isHook: false,
-      line: declaration.loc.start.line
-    });
   }
-}
-function handleExportDefault(node2, result) {
-  const declaration = node2.declaration;
-  if (declaration.type === "FunctionDeclaration") {
-    const name = declaration.id?.name || "default";
-    result.exports.push({
-      name,
-      type: "default",
-      isReactComponent: false,
-      isHook: declaration.id ? isHookName(declaration.id.name) : false,
-      line: declaration.loc.start.line
+  handleImport(node2, result) {
+    const source2 = node2.source.value;
+    const isRelative = source2.startsWith(".") || source2.startsWith("/");
+    const isAlias = isPathAlias(source2);
+    const isExternal = !isRelative && !isAlias;
+    const specifiers = node2.specifiers.map((spec) => {
+      if (spec.type === "ImportDefaultSpecifier") {
+        return "default";
+      } else if (spec.type === "ImportNamespaceSpecifier") {
+        return "*";
+      } else {
+        return spec.local.name;
+      }
     });
-    result.allDeclarations.push({
-      name,
-      type: "function",
-      isExported: true,
-      isDefault: true,
-      isReactComponent: isComponentName(name),
-      isHook: isHookName(name),
-      line: declaration.loc.start.line,
-      signature: buildFunctionSignature(declaration)
-    });
-  } else if (declaration.type === "ClassDeclaration") {
-    const name = declaration.id?.name || "default";
-    result.exports.push({
-      name,
-      type: "default",
-      isReactComponent: false,
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-    result.allDeclarations.push({
-      name,
-      type: "class",
-      isExported: true,
-      isDefault: true,
-      isReactComponent: isComponentName(name),
-      isHook: false,
-      line: declaration.loc.start.line
-    });
-  } else if (declaration.type === "Identifier") {
-    const name = declaration.name;
-    result.exports.push({
-      name,
-      type: "default",
-      isReactComponent: false,
-      isHook: isHookName(name),
-      line: declaration.loc.start.line
-    });
-  }
-}
-function handleCallExpression(node2, result) {
-  if (node2.callee.type === "Identifier" && node2.callee.name === "fetch") {
-    const url2 = extractFirstArgAsString(node2);
-    result.apiCalls.push({
-      method: "fetch",
-      url: url2,
-      library: "fetch",
+    result.imports.push({
+      source: source2,
+      specifiers,
+      isExternal,
       line: node2.loc.start.line
     });
-    return;
   }
-  if (node2.callee.type === "MemberExpression") {
-    const obj = node2.callee.object;
-    const prop = node2.callee.property;
-    if (obj.type === "Identifier" && prop.type === "Identifier") {
-      const objName = obj.name.toLowerCase();
-      const method = prop.name.toLowerCase();
-      if ((objName === "axios" || objName === "ky") && ["get", "post", "put", "delete", "patch", "request"].includes(method)) {
-        const url2 = extractFirstArgAsString(node2);
-        result.apiCalls.push({
-          method,
-          url: url2,
-          library: objName,
-          line: node2.loc.start.line
+  handleExportNamed(node2, result) {
+    if (!node2.declaration) return;
+    const declaration = node2.declaration;
+    if (declaration.type === "FunctionDeclaration" && declaration.id) {
+      const name = declaration.id.name;
+      result.exports.push({
+        name,
+        type: "function",
+        isReactComponent: false,
+        isHook: this.isHookName(name),
+        line: declaration.loc.start.line
+      });
+      result.allDeclarations.push({
+        name,
+        type: "function",
+        isExported: true,
+        isDefault: false,
+        isReactComponent: this.isComponentName(name),
+        isHook: this.isHookName(name),
+        line: declaration.loc.start.line,
+        signature: this.buildFunctionSignature(declaration)
+      });
+    } else if (declaration.type === "ClassDeclaration" && declaration.id) {
+      const name = declaration.id.name;
+      result.exports.push({
+        name,
+        type: "class",
+        isReactComponent: false,
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+      result.allDeclarations.push({
+        name,
+        type: "class",
+        isExported: true,
+        isDefault: false,
+        isReactComponent: this.isComponentName(name),
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+    } else if (declaration.type === "VariableDeclaration") {
+      for (const decl of declaration.declarations) {
+        if (decl.id.type === "Identifier") {
+          const name = decl.id.name;
+          const isArrowFunction = decl.init?.type === "ArrowFunctionExpression" || decl.init?.type === "FunctionExpression";
+          result.exports.push({
+            name,
+            type: isArrowFunction ? "function" : "const",
+            isReactComponent: false,
+            isHook: this.isHookName(name),
+            line: decl.loc.start.line
+          });
+          const declType = isArrowFunction ? "function" : "const";
+          result.allDeclarations.push({
+            name,
+            type: declType,
+            isExported: true,
+            isDefault: false,
+            isReactComponent: isArrowFunction && this.isComponentName(name),
+            isHook: isArrowFunction && this.isHookName(name),
+            line: decl.loc.start.line,
+            signature: isArrowFunction ? this.buildArrowSignature(decl.init) : void 0
+          });
+        }
+      }
+    } else if (declaration.type === "TSTypeAliasDeclaration") {
+      result.allDeclarations.push({
+        name: declaration.id.name,
+        type: "type",
+        isExported: true,
+        isDefault: false,
+        isReactComponent: false,
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+    } else if (declaration.type === "TSInterfaceDeclaration") {
+      result.allDeclarations.push({
+        name: declaration.id.name,
+        type: "interface",
+        isExported: true,
+        isDefault: false,
+        isReactComponent: false,
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+    } else if (declaration.type === "TSEnumDeclaration") {
+      result.allDeclarations.push({
+        name: declaration.id.name,
+        type: "enum",
+        isExported: true,
+        isDefault: false,
+        isReactComponent: false,
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+    }
+  }
+  handleExportDefault(node2, result) {
+    const declaration = node2.declaration;
+    if (declaration.type === "FunctionDeclaration") {
+      const name = declaration.id?.name || "default";
+      result.exports.push({
+        name,
+        type: "default",
+        isReactComponent: false,
+        isHook: declaration.id ? this.isHookName(declaration.id.name) : false,
+        line: declaration.loc.start.line
+      });
+      result.allDeclarations.push({
+        name,
+        type: "function",
+        isExported: true,
+        isDefault: true,
+        isReactComponent: this.isComponentName(name),
+        isHook: this.isHookName(name),
+        line: declaration.loc.start.line,
+        signature: this.buildFunctionSignature(declaration)
+      });
+    } else if (declaration.type === "ClassDeclaration") {
+      const name = declaration.id?.name || "default";
+      result.exports.push({
+        name,
+        type: "default",
+        isReactComponent: false,
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+      result.allDeclarations.push({
+        name,
+        type: "class",
+        isExported: true,
+        isDefault: true,
+        isReactComponent: this.isComponentName(name),
+        isHook: false,
+        line: declaration.loc.start.line
+      });
+    } else if (declaration.type === "Identifier") {
+      const name = declaration.name;
+      result.exports.push({
+        name,
+        type: "default",
+        isReactComponent: false,
+        isHook: this.isHookName(name),
+        line: declaration.loc.start.line
+      });
+    }
+  }
+  handleCallExpression(node2, result) {
+    if (node2.callee.type === "Identifier" && node2.callee.name === "fetch") {
+      const url2 = this.extractFirstArgAsString(node2);
+      result.apiCalls.push({
+        method: "fetch",
+        url: url2,
+        library: "fetch",
+        line: node2.loc.start.line
+      });
+      return;
+    }
+    if (node2.callee.type === "MemberExpression") {
+      const obj = node2.callee.object;
+      const prop = node2.callee.property;
+      if (obj.type === "Identifier" && prop.type === "Identifier") {
+        const objName = obj.name.toLowerCase();
+        const method = prop.name.toLowerCase();
+        if ((objName === "axios" || objName === "ky") && ["get", "post", "put", "delete", "patch", "request"].includes(method)) {
+          const url2 = this.extractFirstArgAsString(node2);
+          result.apiCalls.push({
+            method,
+            url: url2,
+            library: objName,
+            line: node2.loc.start.line
+          });
+        }
+      }
+    }
+  }
+  extractFirstArgAsString(node2) {
+    if (node2.arguments.length > 0) {
+      const firstArg = node2.arguments[0];
+      if (firstArg.type === "Literal" && typeof firstArg.value === "string") {
+        return firstArg.value;
+      }
+      if (firstArg.type === "TemplateLiteral" && firstArg.quasis.length === 1) {
+        return firstArg.quasis[0].value.raw;
+      }
+    }
+    return void 0;
+  }
+  isHookName(name) {
+    return /^use[A-Z]/.test(name);
+  }
+  isComponentName(name) {
+    return /^[A-Z]/.test(name);
+  }
+  identifyReactElements(result) {
+    const hasReactImport = result.imports.some(
+      (imp) => imp.source === "react" || imp.source.startsWith("react/")
+    );
+    const hasJSX = hasReactImport || result.filePath.endsWith(".tsx") || result.filePath.endsWith(".jsx");
+    for (const exp of result.exports) {
+      if (exp.isHook) {
+        result.hooks.push({
+          name: exp.name,
+          line: exp.line,
+          isCustom: true
+        });
+      } else if (this.isComponentName(exp.name) && hasJSX && exp.type !== "const") {
+        exp.isReactComponent = true;
+        result.components.push({
+          name: exp.name,
+          type: exp.type === "class" ? "class" : exp.type === "function" || exp.type === "default" ? "function" : "arrow",
+          line: exp.line,
+          hasJSX: true,
+          usedHooks: []
         });
       }
     }
   }
-}
-function extractFirstArgAsString(node2) {
-  if (node2.arguments.length > 0) {
-    const firstArg = node2.arguments[0];
-    if (firstArg.type === "Literal" && typeof firstArg.value === "string") {
-      return firstArg.value;
-    }
-    if (firstArg.type === "TemplateLiteral" && firstArg.quasis.length === 1) {
-      return firstArg.quasis[0].value.raw;
-    }
-  }
-  return void 0;
-}
-function isHookName(name) {
-  return /^use[A-Z]/.test(name);
-}
-function isComponentName(name) {
-  return /^[A-Z]/.test(name);
-}
-function identifyReactElements(result) {
-  const hasReactImport = result.imports.some(
-    (imp) => imp.source === "react" || imp.source.startsWith("react/")
-  );
-  const hasJSX = hasReactImport || result.filePath.endsWith(".tsx") || result.filePath.endsWith(".jsx");
-  for (const exp of result.exports) {
-    if (exp.isHook) {
-      result.hooks.push({
-        name: exp.name,
-        line: exp.line,
-        isCustom: true
-      });
-    } else if (isComponentName(exp.name) && hasJSX && exp.type !== "const") {
-      exp.isReactComponent = true;
-      result.components.push({
-        name: exp.name,
-        type: exp.type === "class" ? "class" : exp.type === "function" || exp.type === "default" ? "function" : "arrow",
-        line: exp.line,
-        hasJSX: true,
-        usedHooks: []
-        // Could be enhanced to detect used hooks
-      });
-    }
-  }
-}
-function handleFunctionDeclaration(node2, result, isExported) {
-  if (!node2.id) return;
-  const name = node2.id.name;
-  const declaration = {
-    name,
-    type: "function",
-    isExported,
-    isDefault: false,
-    isReactComponent: isComponentName(name),
-    isHook: isHookName(name),
-    line: node2.loc.start.line,
-    signature: buildFunctionSignature(node2)
-  };
-  if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
-    result.allDeclarations.push(declaration);
-  }
-}
-function handleClassDeclaration(node2, result, isExported) {
-  if (!node2.id) return;
-  const name = node2.id.name;
-  const declaration = {
-    name,
-    type: "class",
-    isExported,
-    isDefault: false,
-    isReactComponent: isComponentName(name),
-    isHook: false,
-    line: node2.loc.start.line
-  };
-  if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
-    result.allDeclarations.push(declaration);
-  }
-}
-function handleVariableDeclaration(node2, result, isExported) {
-  for (const decl of node2.declarations) {
-    if (decl.id.type !== "Identifier") continue;
-    const name = decl.id.name;
-    const isArrowFunction = decl.init?.type === "ArrowFunctionExpression" || decl.init?.type === "FunctionExpression";
-    const declType = isArrowFunction ? "function" : node2.kind === "const" ? "const" : node2.kind === "let" ? "let" : "var";
+  handleFunctionDeclaration(node2, result, isExported2) {
+    if (!node2.id) return;
+    const name = node2.id.name;
     const declaration = {
       name,
-      type: declType,
-      isExported,
+      type: "function",
+      isExported: isExported2,
       isDefault: false,
-      isReactComponent: isArrowFunction && isComponentName(name),
-      isHook: isArrowFunction && isHookName(name),
-      line: decl.loc.start.line,
-      signature: isArrowFunction ? buildArrowSignature(decl.init) : void 0
+      isReactComponent: this.isComponentName(name),
+      isHook: this.isHookName(name),
+      line: node2.loc.start.line,
+      signature: this.buildFunctionSignature(node2)
     };
-    if (!isExported && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+    if (!isExported2 && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
       result.allDeclarations.push(declaration);
     }
   }
-}
-function handleTypeAlias(node2, result, isExported) {
-  const declaration = {
-    name: node2.id.name,
-    type: "type",
-    isExported,
-    isDefault: false,
-    isReactComponent: false,
-    isHook: false,
-    line: node2.loc.start.line
-  };
-  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
-    result.allDeclarations.push(declaration);
+  handleClassDeclaration(node2, result, isExported2) {
+    if (!node2.id) return;
+    const name = node2.id.name;
+    const declaration = {
+      name,
+      type: "class",
+      isExported: isExported2,
+      isDefault: false,
+      isReactComponent: this.isComponentName(name),
+      isHook: false,
+      line: node2.loc.start.line
+    };
+    if (!isExported2 && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+      result.allDeclarations.push(declaration);
+    }
+  }
+  handleVariableDeclaration(node2, result, isExported2) {
+    for (const decl of node2.declarations) {
+      if (decl.id.type !== "Identifier") continue;
+      const name = decl.id.name;
+      const isArrowFunction = decl.init?.type === "ArrowFunctionExpression" || decl.init?.type === "FunctionExpression";
+      const declType = isArrowFunction ? "function" : node2.kind === "const" ? "const" : node2.kind === "let" ? "let" : "var";
+      const declaration = {
+        name,
+        type: declType,
+        isExported: isExported2,
+        isDefault: false,
+        isReactComponent: isArrowFunction && this.isComponentName(name),
+        isHook: isArrowFunction && this.isHookName(name),
+        line: decl.loc.start.line,
+        signature: isArrowFunction ? this.buildArrowSignature(decl.init) : void 0
+      };
+      if (!isExported2 && !result.allDeclarations.some((d) => d.name === name && d.line === declaration.line)) {
+        result.allDeclarations.push(declaration);
+      }
+    }
+  }
+  handleTypeAlias(node2, result, isExported2) {
+    const declaration = {
+      name: node2.id.name,
+      type: "type",
+      isExported: isExported2,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: node2.loc.start.line
+    };
+    if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+      result.allDeclarations.push(declaration);
+    }
+  }
+  handleInterface(node2, result, isExported2) {
+    const declaration = {
+      name: node2.id.name,
+      type: "interface",
+      isExported: isExported2,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: node2.loc.start.line
+    };
+    if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+      result.allDeclarations.push(declaration);
+    }
+  }
+  handleEnum(node2, result, isExported2) {
+    const declaration = {
+      name: node2.id.name,
+      type: "enum",
+      isExported: isExported2,
+      isDefault: false,
+      isReactComponent: false,
+      isHook: false,
+      line: node2.loc.start.line
+    };
+    if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
+      result.allDeclarations.push(declaration);
+    }
+  }
+  buildFunctionSignature(node2) {
+    const params = node2.params.map((p) => {
+      if (p.type === "Identifier") return p.name;
+      if (p.type === "RestElement" && p.argument.type === "Identifier") return `...${p.argument.name}`;
+      return "?";
+    }).join(", ");
+    return `(${params})`;
+  }
+  buildArrowSignature(node2) {
+    const params = node2.params.map((p) => {
+      if (p.type === "Identifier") return p.name;
+      if (p.type === "RestElement" && p.argument.type === "Identifier") return `...${p.argument.name}`;
+      return "?";
+    }).join(", ");
+    return `(${params})`;
   }
 }
-function handleInterface(node2, result, isExported) {
-  const declaration = {
-    name: node2.id.name,
-    type: "interface",
-    isExported,
-    isDefault: false,
-    isReactComponent: false,
-    isHook: false,
-    line: node2.loc.start.line
-  };
-  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
-    result.allDeclarations.push(declaration);
+class TypeScriptResolver {
+  languageId = "typescript";
+  /**
+   * Check if an import is external (npm package)
+   */
+  isExternalImport(source2) {
+    const isRelative = source2.startsWith(".") || source2.startsWith("/");
+    const isAlias = isPathAlias(source2);
+    return !isRelative && !isAlias;
+  }
+  /**
+   * Resolve an import source to a file ID
+   */
+  resolveImport(source2, sourceFolder, fileIds) {
+    let resolvedPath;
+    if (source2.startsWith("./")) {
+      resolvedPath = path__namespace.join(sourceFolder, source2.slice(2)).replace(/\\/g, "/");
+    } else if (source2.startsWith("../")) {
+      resolvedPath = path__namespace.join(sourceFolder, source2).replace(/\\/g, "/");
+    } else if (source2.startsWith("/")) {
+      resolvedPath = source2.slice(1);
+    } else {
+      const aliasResolved = this.resolveAliasPath(source2);
+      if (aliasResolved) {
+        resolvedPath = aliasResolved;
+      } else {
+        return null;
+      }
+    }
+    const extensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
+    for (const ext of extensions) {
+      const candidate = resolvedPath + ext;
+      if (fileIds.has(candidate)) {
+        return candidate;
+      }
+    }
+    if (resolvedPath.startsWith("src/")) {
+      const withoutSrc = resolvedPath.slice(4);
+      for (const ext of extensions) {
+        const candidate = withoutSrc + ext;
+        if (fileIds.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    if (!resolvedPath.startsWith("src/")) {
+      const withSrc = "src/" + resolvedPath;
+      for (const ext of extensions) {
+        const candidate = withSrc + ext;
+        if (fileIds.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+  /**
+   * Try to resolve an alias import to a path
+   */
+  resolveAliasPath(importSource) {
+    if (importSource.startsWith("@/")) {
+      return "src/" + importSource.slice(2);
+    }
+    if (importSource.startsWith("@src/")) {
+      return "src/" + importSource.slice(5);
+    }
+    if (importSource.startsWith("~/")) {
+      return "src/" + importSource.slice(2);
+    }
+    if (importSource.startsWith("@renderer/")) {
+      return "src/renderer/" + importSource.slice(10);
+    }
+    if (importSource.startsWith("@main/")) {
+      return "src/main/" + importSource.slice(6);
+    }
+    for (const folder of COMMON_FOLDER_ALIASES) {
+      const aliasPattern = `@${folder}/`;
+      if (importSource.startsWith(aliasPattern)) {
+        return "src/" + folder + "/" + importSource.slice(aliasPattern.length);
+      }
+    }
+    if (importSource.startsWith("#/")) {
+      return "src/" + importSource.slice(2);
+    }
+    if (importSource.startsWith("src/")) {
+      return importSource;
+    }
+    return null;
   }
 }
-function handleEnum(node2, result, isExported) {
-  const declaration = {
-    name: node2.id.name,
-    type: "enum",
-    isExported,
-    isDefault: false,
-    isReactComponent: false,
-    isHook: false,
-    line: node2.loc.start.line
-  };
-  if (!result.allDeclarations.some((d) => d.name === declaration.name && d.line === declaration.line)) {
-    result.allDeclarations.push(declaration);
+function isExported(visibility) {
+  return visibility === "public" || visibility === "internal" || visibility === "protected internal";
+}
+function parseVisibility(modifiers) {
+  const hasPublic = modifiers.includes("public");
+  const hasPrivate = modifiers.includes("private");
+  const hasProtected = modifiers.includes("protected");
+  const hasInternal = modifiers.includes("internal");
+  if (hasPublic) return "public";
+  if (hasPrivate && hasProtected) return "private protected";
+  if (hasProtected && hasInternal) return "protected internal";
+  if (hasProtected) return "protected";
+  if (hasInternal) return "internal";
+  if (hasPrivate) return "private";
+  return "private";
+}
+const DOTNET_FRAMEWORK_NAMESPACES = [
+  "System",
+  "Microsoft",
+  "Windows",
+  "Newtonsoft",
+  "NuGet",
+  "EntityFramework",
+  "NLog",
+  "Serilog",
+  "AutoMapper",
+  "FluentValidation",
+  "Dapper",
+  "MediatR",
+  "Polly",
+  "Moq",
+  "xUnit",
+  "NUnit",
+  "MSTest"
+];
+function isFrameworkNamespace(namespace) {
+  return DOTNET_FRAMEWORK_NAMESPACES.some(
+    (prefix) => namespace === prefix || namespace.startsWith(prefix + ".")
+  );
+}
+class CSharpParser {
+  languageId = "csharp";
+  supportedExtensions = [".cs"];
+  getSupportedExtensions() {
+    return this.supportedExtensions;
+  }
+  canParse(filePath) {
+    const ext = path__namespace.extname(filePath).toLowerCase();
+    return this.supportedExtensions.includes(ext);
+  }
+  async parseFile(filePath) {
+    const result = {
+      filePath,
+      exports: [],
+      imports: [],
+      components: [],
+      hooks: [],
+      apiCalls: [],
+      allDeclarations: [],
+      errors: [],
+      languageMetadata: {
+        language: "csharp"
+      }
+    };
+    let code2;
+    try {
+      code2 = await fs__namespace.readFile(filePath, "utf-8");
+    } catch (readError) {
+      const err = readError;
+      let message = "Failed to read file";
+      if (err.code === "ENOENT") message = "File not found";
+      else if (err.code === "EACCES") message = "Permission denied";
+      else if (err.message) message = err.message.slice(0, 200);
+      result.errors?.push({
+        type: "read",
+        file: filePath,
+        line: 0,
+        message
+      });
+      return result;
+    }
+    if (code2.includes("\0")) {
+      result.errors?.push({
+        type: "encoding",
+        file: filePath,
+        line: 0,
+        message: "File appears to be binary"
+      });
+      return result;
+    }
+    try {
+      const namespace = this.parseNamespace(code2);
+      if (namespace) {
+        result.languageMetadata.namespace = namespace;
+      }
+      result.imports = this.parseUsingDirectives(code2);
+      result.allDeclarations = this.parseDeclarations(code2, filePath);
+      for (const decl of result.allDeclarations) {
+        if (decl.isExported) {
+          result.exports.push({
+            name: decl.name,
+            type: decl.type === "function" ? "function" : decl.type === "class" ? "class" : "const",
+            isReactComponent: false,
+            isHook: false,
+            line: decl.line
+          });
+        }
+      }
+    } catch (parseError) {
+      const err = parseError;
+      result.errors?.push({
+        type: "syntax",
+        file: filePath,
+        line: 0,
+        message: `Parse error: ${err.message.slice(0, 200)}`
+      });
+    }
+    return result;
+  }
+  /**
+   * Parse namespace declaration from C# code
+   * Supports both block-scoped and file-scoped namespaces
+   */
+  parseNamespace(code2) {
+    const fileScopedMatch = code2.match(/^\s*namespace\s+([\w.]+)\s*;/m);
+    if (fileScopedMatch) {
+      return fileScopedMatch[1];
+    }
+    const blockScopedMatch = code2.match(/^\s*namespace\s+([\w.]+)\s*\{/m);
+    if (blockScopedMatch) {
+      return blockScopedMatch[1];
+    }
+    return void 0;
+  }
+  /**
+   * Parse using directives
+   */
+  parseUsingDirectives(code2) {
+    const imports = [];
+    const usingRegex = /^\s*using\s+(?:static\s+)?([\w.]+)\s*;/gm;
+    let match;
+    while ((match = usingRegex.exec(code2)) !== null) {
+      const namespace = match[1];
+      const line = this.getLineNumber(code2, match.index);
+      imports.push({
+        source: namespace,
+        specifiers: ["*"],
+        // C# using imports everything from namespace
+        isExternal: isFrameworkNamespace(namespace),
+        line
+      });
+    }
+    const aliasRegex = /^\s*using\s+(\w+)\s*=\s*([\w.]+)\s*;/gm;
+    while ((match = aliasRegex.exec(code2)) !== null) {
+      const alias = match[1];
+      const namespace = match[2];
+      const line = this.getLineNumber(code2, match.index);
+      imports.push({
+        source: namespace,
+        specifiers: [alias],
+        isExternal: isFrameworkNamespace(namespace),
+        line
+      });
+    }
+    return imports;
+  }
+  /**
+   * Parse all declarations from C# code
+   */
+  parseDeclarations(code2, filePath) {
+    const declarations = [];
+    const cleanCode = this.removeCommentsAndStrings(code2);
+    this.parseTypeDeclarations(cleanCode, code2, "class", "class", declarations, filePath);
+    this.parseTypeDeclarations(cleanCode, code2, "interface", "interface", declarations, filePath);
+    this.parseTypeDeclarations(cleanCode, code2, "struct", "class", declarations, filePath);
+    this.parseTypeDeclarations(cleanCode, code2, "record", "class", declarations, filePath);
+    this.parseTypeDeclarations(cleanCode, code2, "enum", "enum", declarations, filePath);
+    this.parseDelegates(cleanCode, code2, declarations, filePath);
+    return declarations;
+  }
+  /**
+   * Parse type declarations (class, interface, struct, record, enum)
+   */
+  parseTypeDeclarations(cleanCode, originalCode, keyword2, mappedType, declarations, filePath) {
+    const modifierPattern = "(?:(?:public|private|protected|internal|static|abstract|sealed|partial|readonly|new)\\s+)*";
+    const genericPattern = "(?:<[^>]+>)?";
+    const basePattern = "(?:\\s*:\\s*[\\w.<>,\\s]+)?";
+    const regex = new RegExp(
+      `(${modifierPattern})${keyword2}\\s+(\\w+)${genericPattern}${basePattern}\\s*[{;]`,
+      "g"
+    );
+    let match;
+    while ((match = regex.exec(cleanCode)) !== null) {
+      const modifiersStr = match[1].trim();
+      const name = match[2];
+      const line = this.getLineNumber(originalCode, match.index);
+      const modifiers = modifiersStr.split(/\s+/).filter(Boolean);
+      const visibility = parseVisibility(modifiers);
+      declarations.push({
+        name,
+        type: mappedType,
+        isExported: isExported(visibility),
+        isDefault: false,
+        isReactComponent: false,
+        isHook: false,
+        line
+      });
+    }
+  }
+  /**
+   * Parse delegate declarations
+   */
+  parseDelegates(cleanCode, originalCode, declarations, filePath) {
+    const modifierPattern = "(?:(?:public|private|protected|internal|static|new)\\s+)*";
+    const regex = new RegExp(
+      `(${modifierPattern})delegate\\s+[\\w.<>\\[\\],\\s]+\\s+(\\w+)\\s*\\([^)]*\\)\\s*;`,
+      "g"
+    );
+    let match;
+    while ((match = regex.exec(cleanCode)) !== null) {
+      const modifiersStr = match[1].trim();
+      const name = match[2];
+      const line = this.getLineNumber(originalCode, match.index);
+      const modifiers = modifiersStr.split(/\s+/).filter(Boolean);
+      const visibility = parseVisibility(modifiers);
+      declarations.push({
+        name,
+        type: "type",
+        isExported: isExported(visibility),
+        isDefault: false,
+        isReactComponent: false,
+        isHook: false,
+        line
+      });
+    }
+  }
+  /**
+   * Remove comments and string literals from code to avoid false matches
+   */
+  removeCommentsAndStrings(code2) {
+    let result = code2;
+    result = result.replace(/\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length));
+    result = result.replace(/\/\/[^\n]*/g, (match) => " ".repeat(match.length));
+    result = result.replace(/@"(?:[^"]|"")*"/g, (match) => " ".repeat(match.length));
+    result = result.replace(/\$"(?:[^"\\]|\\.)*"/g, (match) => " ".repeat(match.length));
+    result = result.replace(/"(?:[^"\\]|\\.)*"/g, (match) => " ".repeat(match.length));
+    result = result.replace(/'(?:[^'\\]|\\.)*'/g, (match) => " ".repeat(match.length));
+    return result;
+  }
+  /**
+   * Get line number for a character position
+   */
+  getLineNumber(code2, position) {
+    const substring = code2.substring(0, position);
+    return (substring.match(/\n/g) || []).length + 1;
   }
 }
-function buildFunctionSignature(node2) {
-  const params = node2.params.map((p) => {
-    if (p.type === "Identifier") return p.name;
-    if (p.type === "RestElement" && p.argument.type === "Identifier") return `...${p.argument.name}`;
-    return "?";
-  }).join(", ");
-  return `(${params})`;
+class CSharpResolver {
+  languageId = "csharp";
+  // Map of namespace -> file IDs (built during analysis)
+  namespaceToFiles = /* @__PURE__ */ new Map();
+  /**
+   * Set the namespace to files mapping
+   * This should be called after parsing all files to enable resolution
+   */
+  setNamespaceMap(namespaceMap) {
+    this.namespaceToFiles = namespaceMap;
+  }
+  /**
+   * Check if an import is external (.NET Framework or NuGet package)
+   */
+  isExternalImport(source2) {
+    if (isFrameworkNamespace(source2)) {
+      return true;
+    }
+    if (!this.namespaceToFiles.has(source2)) {
+      const hasAnyMatch = Array.from(this.namespaceToFiles.keys()).some(
+        (ns) => ns === source2 || ns.startsWith(source2 + ".")
+      );
+      return !hasAnyMatch;
+    }
+    return false;
+  }
+  /**
+   * Resolve a using directive to file IDs
+   * Note: In C#, one namespace can span multiple files, so we return the first match
+   */
+  resolveImport(source2, _sourceFolder, fileIds) {
+    const files = this.namespaceToFiles.get(source2);
+    if (files && files.length > 0) {
+      for (const file of files) {
+        if (fileIds.has(file)) {
+          return file;
+        }
+      }
+    }
+    for (const [namespace, nsFiles] of this.namespaceToFiles.entries()) {
+      if (namespace.startsWith(source2 + ".")) {
+        for (const file of nsFiles) {
+          if (fileIds.has(file)) {
+            return file;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  /**
+   * Build namespace map from parsed files
+   */
+  static buildNamespaceMap(files) {
+    const namespaceMap = /* @__PURE__ */ new Map();
+    for (const [fileId, fileInfo] of files.entries()) {
+      if (fileInfo.namespace) {
+        const existing = namespaceMap.get(fileInfo.namespace) || [];
+        existing.push(fileId);
+        namespaceMap.set(fileInfo.namespace, existing);
+      }
+    }
+    return namespaceMap;
+  }
 }
-function buildArrowSignature(node2) {
-  const params = node2.params.map((p) => {
-    if (p.type === "Identifier") return p.name;
-    if (p.type === "RestElement" && p.argument.type === "Identifier") return `...${p.argument.name}`;
-    return "?";
-  }).join(", ");
-  return `(${params})`;
+function initializeParserRegistry() {
+  const registry = getParserRegistry();
+  registry.registerParser(new TypeScriptParser());
+  registry.registerResolver(new TypeScriptResolver());
+  registry.registerParser(new CSharpParser());
+  registry.registerResolver(new CSharpResolver());
 }
-const IGNORE_DIRS = ["node_modules", "dist", "build", ".git", "coverage", ".next", ".cache", "out"];
-const VALID_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const FOLDER_BASE_HUES = [210, 150, 35, 270, 0, 330, 185, 75];
+const fileImportSources = /* @__PURE__ */ new Map();
+const fileLanguageMetadata = /* @__PURE__ */ new Map();
+function buildDependencyGraph(structure, projectName, rootPath) {
+  fileImportSources.clear();
+  fileLanguageMetadata.clear();
+  const fileResults = /* @__PURE__ */ new Map();
+  collectFileResults(structure, fileResults);
+  const files = /* @__PURE__ */ new Map();
+  const rootFolders = /* @__PURE__ */ new Set();
+  const namespaceMap = buildNamespaceMap(fileResults, rootPath);
+  for (const [filePath, fileInfo] of fileResults) {
+    const relativePath = path__namespace.relative(rootPath, filePath).replace(/\\/g, "/");
+    const folder = path__namespace.dirname(relativePath);
+    const rootFolder = getRootFolder(relativePath);
+    if (rootFolder) {
+      rootFolders.add(rootFolder);
+    }
+    const importSources = [];
+    const fileNode = createFileNode(filePath, relativePath, folder, rootFolder, fileInfo, importSources);
+    files.set(fileNode.id, fileNode);
+    fileImportSources.set(fileNode.id, importSources);
+  }
+  const rootFoldersArray = Array.from(rootFolders).sort();
+  for (const file of files.values()) {
+    file.color = getFolderColor(file.rootFolder, rootFoldersArray, file.folderDepth);
+  }
+  const relations = buildImportRelationsWithSources(files, rootPath, namespaceMap);
+  const folderClusters = buildFolderClusters(files, rootFoldersArray);
+  const communityClusters = buildCommunityClusters(files, relations);
+  const stats = calculateStats(files, relations);
+  const graph = {
+    rootPath,
+    name: projectName,
+    analyzedAt: /* @__PURE__ */ new Date(),
+    files,
+    relations,
+    clusters: {
+      [ClusteringMode.FOLDER]: folderClusters,
+      [ClusteringMode.COMMUNITY]: communityClusters
+    },
+    rootFolders: rootFoldersArray,
+    stats
+  };
+  return serializeGraph(graph);
+}
+function buildNamespaceMap(fileResults, rootPath) {
+  const namespaceMap = /* @__PURE__ */ new Map();
+  for (const [filePath, fileInfo] of fileResults) {
+    const extResult = fileInfo;
+    if (extResult.languageMetadata?.language === "csharp" && extResult.languageMetadata.namespace) {
+      const relativePath = path__namespace.relative(rootPath, filePath).replace(/\\/g, "/");
+      const namespace = extResult.languageMetadata.namespace;
+      const existing = namespaceMap.get(namespace) || [];
+      existing.push(relativePath);
+      namespaceMap.set(namespace, existing);
+    }
+  }
+  return namespaceMap;
+}
+function collectFileResults(structure, results) {
+  if (structure.type === "file" && structure.fileInfo) {
+    results.set(structure.path, structure.fileInfo);
+  }
+  if (structure.children) {
+    for (const child of structure.children) {
+      collectFileResults(child, results);
+    }
+  }
+}
+function getRootFolder(relativePath) {
+  const parts = relativePath.split("/");
+  if (parts[0] === "src" && parts.length > 1) {
+    return parts[1];
+  }
+  return parts[0];
+}
+function getFolderDepth(folder, rootFolder) {
+  if (!folder || folder === "." || folder === rootFolder) return 0;
+  const folderParts = folder.split("/");
+  const rootIndex = folderParts.indexOf(rootFolder);
+  if (rootIndex === -1) return 0;
+  return folderParts.length - rootIndex - 1;
+}
+function getFolderColor(rootFolder, rootFolders, depth2) {
+  const rootIndex = rootFolders.indexOf(rootFolder);
+  const colorIndex = rootIndex >= 0 ? rootIndex : 0;
+  const hue = FOLDER_BASE_HUES[colorIndex % FOLDER_BASE_HUES.length];
+  const saturation = 70;
+  const lightness = Math.min(45 + depth2 * 10, 80);
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+function createFileNode(filePath, relativePath, folder, rootFolder, fileInfo, internalImportsOut) {
+  const fileName = path__namespace.basename(filePath);
+  const fileType = getFileType(fileName);
+  const codeItems = fileInfo.allDeclarations.map(
+    (decl) => declarationToCodeItem(decl, filePath)
+  );
+  const internalImports = fileInfo.imports.filter((imp) => !imp.isExternal);
+  for (const imp of internalImports) {
+    internalImportsOut.push({
+      source: imp.source,
+      specifiers: imp.specifiers,
+      line: imp.line
+    });
+  }
+  const imports = internalImports.map((imp) => ({
+    targetFileId: "",
+    // Will be resolved later
+    specifiers: imp.specifiers,
+    line: imp.line
+  }));
+  const externalImports = fileInfo.imports.filter((imp) => imp.isExternal).map((imp) => imp.source);
+  const extResult = fileInfo;
+  const languageMetadata = extResult.languageMetadata;
+  if (languageMetadata) {
+    fileLanguageMetadata.set(relativePath, languageMetadata);
+  }
+  return {
+    id: relativePath,
+    // Use relative path as ID for easier matching
+    filePath,
+    relativePath,
+    fileName,
+    folder,
+    folderDepth: getFolderDepth(folder, rootFolder),
+    rootFolder,
+    type: fileType,
+    codeItems,
+    imports,
+    externalImports,
+    color: "",
+    // Will be set later
+    languageMetadata
+  };
+}
+function getFileType(fileName) {
+  if (fileName === "index.ts" || fileName === "index.tsx" || fileName === "index.js" || fileName === "index.jsx") {
+    return "index_file";
+  }
+  if (fileName.includes(".test.") || fileName.includes(".spec.") || fileName.includes("__tests__") || fileName.includes("Tests.cs") || fileName.includes("Test.cs")) {
+    return "test_file";
+  }
+  if (fileName.endsWith(".config.ts") || fileName.endsWith(".config.js") || fileName === "tsconfig.json" || fileName.endsWith(".csproj") || fileName.endsWith(".sln") || fileName === "appsettings.json") {
+    return "config_file";
+  }
+  return "source_file";
+}
+function declarationToCodeItem(decl, filePath) {
+  let type2;
+  if (decl.isReactComponent) {
+    type2 = "react_component";
+  } else if (decl.isHook) {
+    type2 = "hook";
+  } else if (decl.type === "function") {
+    type2 = "function";
+  } else if (decl.type === "class") {
+    type2 = "class";
+  } else if (decl.type === "interface") {
+    type2 = "interface";
+  } else if (decl.type === "type") {
+    type2 = "type";
+  } else {
+    type2 = "const";
+  }
+  return {
+    id: `${filePath}:${decl.name}:${decl.line}`,
+    name: decl.name,
+    type: type2,
+    isExported: decl.isExported,
+    isDefault: decl.isDefault,
+    line: decl.line,
+    signature: decl.signature
+  };
+}
+function buildImportRelationsWithSources(files, rootPath, namespaceMap) {
+  const relations = [];
+  const seenRelations = /* @__PURE__ */ new Set();
+  const fileIds = new Set(files.keys());
+  const registry = getParserRegistry();
+  const csharpResolver = registry.getResolver("csharp");
+  if (csharpResolver) {
+    csharpResolver.setNamespaceMap(namespaceMap);
+  }
+  for (const file of files.values()) {
+    const importSources = fileImportSources.get(file.id) || [];
+    const languageMetadata = fileLanguageMetadata.get(file.id);
+    const resolver = languageMetadata?.language ? registry.getResolver(languageMetadata.language) : registry.getResolverForFile(file.filePath);
+    for (let i = 0; i < importSources.length; i++) {
+      const importInfo = importSources[i];
+      let targetFileId = null;
+      if (resolver) {
+        targetFileId = resolver.resolveImport(importInfo.source, file.folder, fileIds);
+      } else {
+        targetFileId = resolveImportPath(importInfo.source, file.folder, files);
+      }
+      if (targetFileId && targetFileId !== file.id) {
+        const relationKey = `${file.id}->${targetFileId}`;
+        if (!seenRelations.has(relationKey)) {
+          seenRelations.add(relationKey);
+          if (file.imports[i]) {
+            file.imports[i].targetFileId = targetFileId;
+          }
+          relations.push({
+            id: relationKey,
+            sourceFileId: file.id,
+            targetFileId,
+            specifiers: importInfo.specifiers,
+            label: importInfo.specifiers.length > 0 ? `{ ${importInfo.specifiers.slice(0, 3).join(", ")}${importInfo.specifiers.length > 3 ? "..." : ""} }` : "imports"
+          });
+        }
+      }
+    }
+  }
+  return relations;
+}
+function resolveAliasPath(importSource) {
+  if (importSource.startsWith("@/")) {
+    return "src/" + importSource.slice(2);
+  }
+  if (importSource.startsWith("@src/")) {
+    return "src/" + importSource.slice(5);
+  }
+  if (importSource.startsWith("~/")) {
+    return "src/" + importSource.slice(2);
+  }
+  if (importSource.startsWith("@renderer/")) {
+    return "src/renderer/" + importSource.slice(10);
+  }
+  if (importSource.startsWith("@main/")) {
+    return "src/main/" + importSource.slice(6);
+  }
+  const commonFolderAliases = [
+    "components",
+    "utils",
+    "hooks",
+    "stores",
+    "store",
+    "types",
+    "services",
+    "lib",
+    "api",
+    "assets",
+    "styles",
+    "config",
+    "helpers",
+    "constants",
+    "context",
+    "contexts",
+    "features",
+    "pages",
+    "views",
+    "layouts",
+    "shared",
+    "common",
+    "modules"
+  ];
+  for (const folder of commonFolderAliases) {
+    const aliasPattern = `@${folder}/`;
+    if (importSource.startsWith(aliasPattern)) {
+      return "src/" + folder + "/" + importSource.slice(aliasPattern.length);
+    }
+  }
+  if (importSource.startsWith("#/")) {
+    return "src/" + importSource.slice(2);
+  }
+  if (importSource.startsWith("src/")) {
+    return importSource;
+  }
+  return null;
+}
+function resolveImportPath(importSource, sourceFolder, files) {
+  let resolvedPath;
+  if (importSource.startsWith("./")) {
+    resolvedPath = path__namespace.join(sourceFolder, importSource.slice(2)).replace(/\\/g, "/");
+  } else if (importSource.startsWith("../")) {
+    resolvedPath = path__namespace.join(sourceFolder, importSource).replace(/\\/g, "/");
+  } else if (importSource.startsWith("/")) {
+    resolvedPath = importSource.slice(1);
+  } else {
+    const aliasResolved = resolveAliasPath(importSource);
+    if (aliasResolved) {
+      resolvedPath = aliasResolved;
+    } else {
+      return null;
+    }
+  }
+  const extensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
+  for (const ext of extensions) {
+    const candidate = resolvedPath + ext;
+    if (files.has(candidate)) {
+      return candidate;
+    }
+  }
+  if (resolvedPath.startsWith("src/")) {
+    const withoutSrc = resolvedPath.slice(4);
+    for (const ext of extensions) {
+      const candidate = withoutSrc + ext;
+      if (files.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  if (!resolvedPath.startsWith("src/")) {
+    const withSrc = "src/" + resolvedPath;
+    for (const ext of extensions) {
+      const candidate = withSrc + ext;
+      if (files.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+function buildFolderClusters(files, rootFolders) {
+  const clusterMap = /* @__PURE__ */ new Map();
+  for (const file of files.values()) {
+    const clusterKey = file.folder || "root";
+    const existing = clusterMap.get(clusterKey) || [];
+    existing.push(file.id);
+    clusterMap.set(clusterKey, existing);
+  }
+  const clusters = [];
+  for (const [folderPath, fileIds] of clusterMap) {
+    const rootFolder = getRootFolder(folderPath + "/dummy");
+    const depth2 = getFolderDepth(folderPath, rootFolder);
+    clusters.push({
+      id: `folder-${folderPath}`,
+      name: path__namespace.basename(folderPath) || "root",
+      folderPath,
+      fileIds,
+      color: getFolderColor(rootFolder, rootFolders, depth2),
+      depth: depth2,
+      mode: ClusteringMode.FOLDER
+    });
+  }
+  return clusters.sort((a, b) => a.folderPath.localeCompare(b.folderPath));
+}
+function buildCommunityClusters(files, relations) {
+  const communities = detectCommunities(files, relations);
+  const clusters = [];
+  const communityGroups = /* @__PURE__ */ new Map();
+  for (const [fileId, communityId] of communities) {
+    const existing = communityGroups.get(communityId) || [];
+    existing.push(fileId);
+    communityGroups.set(communityId, existing);
+    const file = files.get(fileId);
+    if (file) {
+      file.communityId = communityId;
+    }
+  }
+  let index = 0;
+  for (const [communityId, fileIds] of communityGroups) {
+    const goldenRatio = 0.618033988749895;
+    const hue = Math.round(index * goldenRatio % 1 * 360);
+    clusters.push({
+      id: communityId,
+      name: `Group ${index + 1}`,
+      folderPath: "",
+      fileIds,
+      color: `hsl(${hue}, 65%, 55%)`,
+      depth: 0,
+      mode: ClusteringMode.COMMUNITY
+    });
+    index++;
+  }
+  return clusters;
+}
+function calculateStats(files, relations) {
+  const totalFiles = files.size;
+  const totalCodeItems = Array.from(files.values()).reduce(
+    (sum, file) => sum + file.codeItems.length,
+    0
+  );
+  const totalImports = relations.length;
+  const averageImportsPerFile = totalFiles > 0 ? totalImports / totalFiles : 0;
+  const connectionCount = /* @__PURE__ */ new Map();
+  for (const rel of relations) {
+    connectionCount.set(rel.sourceFileId, (connectionCount.get(rel.sourceFileId) || 0) + 1);
+    connectionCount.set(rel.targetFileId, (connectionCount.get(rel.targetFileId) || 0) + 1);
+  }
+  const mostConnectedFiles = Array.from(connectionCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([fileId]) => fileId);
+  return {
+    totalFiles,
+    totalCodeItems,
+    totalImports,
+    averageImportsPerFile: Math.round(averageImportsPerFile * 100) / 100,
+    mostConnectedFiles
+  };
+}
+function serializeGraph(graph) {
+  return {
+    rootPath: graph.rootPath,
+    name: graph.name,
+    analyzedAt: graph.analyzedAt.toISOString(),
+    files: Array.from(graph.files.entries()),
+    relations: graph.relations,
+    clusters: {
+      folder: graph.clusters[ClusteringMode.FOLDER],
+      community: graph.clusters[ClusteringMode.COMMUNITY]
+    },
+    rootFolders: graph.rootFolders,
+    stats: graph.stats
+  };
+}
+const IGNORE_DIRS = [
+  "node_modules",
+  "dist",
+  "build",
+  ".git",
+  "coverage",
+  ".next",
+  ".cache",
+  "out",
+  // C# specific
+  "bin",
+  "obj",
+  ".vs",
+  "packages",
+  "TestResults"
+];
+let registryInitialized = false;
+function ensureRegistryInitialized() {
+  if (!registryInitialized) {
+    initializeParserRegistry();
+    registryInitialized = true;
+  }
+}
 async function scanDirectory(dirPath, signal, onProgress) {
+  ensureRegistryInitialized();
+  const registry = getParserRegistry();
+  const validExtensions = registry.getAllSupportedExtensions();
   const files = [];
   async function scan2(currentPath) {
     if (signal.aborted) {
@@ -242299,7 +242920,7 @@ async function scanDirectory(dirPath, signal, onProgress) {
       return { path: currentPath, name, type: "directory", children };
     }
     const ext = path__namespace.extname(currentPath).toLowerCase();
-    if (VALID_EXTENSIONS.includes(ext)) {
+    if (validExtensions.includes(ext)) {
       files.push(currentPath);
     }
     return { path: currentPath, name, type: "file" };
@@ -242314,6 +242935,8 @@ async function scanDirectory(dirPath, signal, onProgress) {
   return { structure, files };
 }
 async function parseFilesDirect(files, signal, onProgress, onError) {
+  ensureRegistryInitialized();
+  const registry = getParserRegistry();
   const results = /* @__PURE__ */ new Map();
   const total = files.length;
   for (let i = 0; i < files.length; i++) {
@@ -242328,8 +242951,10 @@ async function parseFilesDirect(files, signal, onProgress, onError) {
       currentFile: file
     });
     try {
-      const result = await parseFile(file);
-      results.set(file, result);
+      const result = await registry.parseFile(file);
+      if (result) {
+        results.set(file, result);
+      }
     } catch (error2) {
       onError({
         type: "parse",
@@ -242399,7 +243024,9 @@ async function parseFilesWithWorker(files, signal, onProgress, onError) {
 async function analyzeProjectDirectory(dirPath, signal, onProgress, onError) {
   const { structure, files } = await scanDirectory(dirPath, signal, onProgress);
   if (files.length === 0) {
-    throw new Error("No TypeScript or JavaScript files found in the selected directory");
+    const registry = getParserRegistry();
+    const supportedExts = registry.getAllSupportedExtensions().join(", ");
+    throw new Error(`No supported source files found in the selected directory. Supported extensions: ${supportedExts}`);
   }
   const parseResults = await parseFilesWithWorker(files, signal, onProgress, onError);
   onProgress({

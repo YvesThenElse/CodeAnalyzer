@@ -57,6 +57,18 @@ export enum LogicNodeType {
   EXCEPTION = 'exception'
 }
 
+// ===== LANGUAGE METADATA =====
+
+export type LanguageId = 'typescript' | 'javascript' | 'csharp'
+
+export interface LanguageMetadata {
+  language: LanguageId
+  /** C# namespace (C# only) */
+  namespace?: string
+  /** Assembly references from .csproj (C# only) */
+  assemblyReferences?: string[]
+}
+
 // ===== FILE NODE =====
 
 export interface FileNode {
@@ -73,6 +85,8 @@ export interface FileNode {
   externalImports: string[]
   communityId?: string
   color: string
+  // Language-specific metadata
+  languageMetadata?: LanguageMetadata
   // LLM-generated descriptions
   shortDescription?: string
   longDescription?: string

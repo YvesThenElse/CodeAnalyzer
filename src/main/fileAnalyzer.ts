@@ -23,13 +23,23 @@ import type { AnalysisProgress, AnalysisError } from '../renderer/src/types/elec
 import type { SerializedAnalyzedGraph } from '../renderer/src/types/graph.types'
 import type { DirectoryStructure, FileAnalysisResult } from '../renderer/src/types/ast.types'
 import { buildDependencyGraph } from './graphBuilder'
-import { parseFile } from './astParser'
+import { getParserRegistry, initializeParserRegistry } from './languages'
 
 // Directories to ignore during scan
-const IGNORE_DIRS = ['node_modules', 'dist', 'build', '.git', 'coverage', '.next', '.cache', 'out']
+const IGNORE_DIRS = [
+  'node_modules', 'dist', 'build', '.git', 'coverage', '.next', '.cache', 'out',
+  // C# specific
+  'bin', 'obj', '.vs', 'packages', 'TestResults'
+]
 
-// Valid file extensions for analysis
-const VALID_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx']
+// Initialize parser registry on module load
+let registryInitialized = false
+function ensureRegistryInitialized(): void {
+  if (!registryInitialized) {
+    initializeParserRegistry()
+    registryInitialized = true
+  }
+}
 
 export interface ScanResult {
   structure: DirectoryStructure
@@ -44,6 +54,9 @@ async function scanDirectory(
   signal: AbortSignal,
   onProgress: (progress: AnalysisProgress) => void
 ): Promise<ScanResult> {
+  ensureRegistryInitialized()
+  const registry = getParserRegistry()
+  const validExtensions = registry.getAllSupportedExtensions()
   const files: string[] = []
 
   async function scan(currentPath: string): Promise<DirectoryStructure> {
@@ -76,7 +89,7 @@ async function scanDirectory(
 
     // Check if file has valid extension
     const ext = path.extname(currentPath).toLowerCase()
-    if (VALID_EXTENSIONS.includes(ext)) {
+    if (validExtensions.includes(ext)) {
       files.push(currentPath)
     }
 
@@ -96,7 +109,7 @@ async function scanDirectory(
 }
 
 /**
- * Parse files directly (fallback when worker is not available)
+ * Parse files directly using the ParserRegistry
  */
 async function parseFilesDirect(
   files: string[],
@@ -104,6 +117,8 @@ async function parseFilesDirect(
   onProgress: (progress: AnalysisProgress) => void,
   onError: (error: AnalysisError) => void
 ): Promise<Map<string, FileAnalysisResult>> {
+  ensureRegistryInitialized()
+  const registry = getParserRegistry()
   const results = new Map<string, FileAnalysisResult>()
   const total = files.length
 
@@ -122,8 +137,10 @@ async function parseFilesDirect(
     })
 
     try {
-      const result = await parseFile(file)
-      results.set(file, result)
+      const result = await registry.parseFile(file)
+      if (result) {
+        results.set(file, result)
+      }
     } catch (error) {
       onError({
         type: 'parse',
@@ -234,7 +251,9 @@ export async function analyzeProjectDirectory(
   const { structure, files } = await scanDirectory(dirPath, signal, onProgress)
 
   if (files.length === 0) {
-    throw new Error('No TypeScript or JavaScript files found in the selected directory')
+    const registry = getParserRegistry()
+    const supportedExts = registry.getAllSupportedExtensions().join(', ')
+    throw new Error(`No supported source files found in the selected directory. Supported extensions: ${supportedExts}`)
   }
 
   // Phase 2: Parse files with worker

@@ -17,7 +17,8 @@
  */
 
 import { parentPort, workerData } from 'worker_threads'
-import { parseFile } from '../astParser'
+import { getParserRegistry, initializeParserRegistry } from '../languages'
+import type { ExtendedFileAnalysisResult } from '../languages/core/types'
 
 interface WorkerData {
   files: string[]
@@ -28,7 +29,7 @@ interface ProgressMessage {
   current: number
   total: number
   file: string
-  result?: Awaited<ReturnType<typeof parseFile>>
+  result?: ExtendedFileAnalysisResult
   error?: { message: string }
 }
 
@@ -40,6 +41,10 @@ type WorkerMessage = ProgressMessage | DoneMessage
 
 const { files } = workerData as WorkerData
 let cancelled = false
+
+// Initialize parser registry
+initializeParserRegistry()
+const registry = getParserRegistry()
 
 // Listen for cancel message
 parentPort?.on('message', (msg) => {
@@ -57,11 +62,11 @@ async function analyze(): Promise<void> {
     }
 
     const file = files[i]
-    let result: Awaited<ReturnType<typeof parseFile>> | undefined
+    let result: ExtendedFileAnalysisResult | null = null
     let error: { message: string } | undefined
 
     try {
-      result = await parseFile(file)
+      result = await registry.parseFile(file)
     } catch (e) {
       error = { message: (e as Error).message }
     }
@@ -71,7 +76,7 @@ async function analyze(): Promise<void> {
       current: i + 1,
       total,
       file,
-      result,
+      result: result || undefined,
       error
     }
 

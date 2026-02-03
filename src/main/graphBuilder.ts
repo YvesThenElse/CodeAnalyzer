@@ -29,15 +29,22 @@ import {
   type FileImport,
   type ImportRelation,
   type Cluster,
-  type GraphStats
+  type GraphStats,
+  type LanguageMetadata
 } from '../renderer/src/types/graph.types'
 import { detectCommunities } from './communityDetection'
+import { getParserRegistry } from './languages'
+import type { ExtendedFileAnalysisResult } from './languages/core/types'
+import { CSharpResolver } from './languages/csharp/resolver'
 
 // Color generation for folders
 const FOLDER_BASE_HUES = [210, 150, 35, 270, 0, 330, 185, 75]
 
 // Map to store import sources for each file
 const fileImportSources = new Map<string, InternalImportInfo[]>()
+
+// Store language metadata for each file
+const fileLanguageMetadata = new Map<string, LanguageMetadata>()
 
 /**
  * Build dependency graph from analyzed files
@@ -49,6 +56,7 @@ export function buildDependencyGraph(
 ): SerializedAnalyzedGraph {
   // Clear previous state
   fileImportSources.clear()
+  fileLanguageMetadata.clear()
 
   // Collect all analyzed files
   const fileResults = new Map<string, FileAnalysisResult>()
@@ -57,6 +65,9 @@ export function buildDependencyGraph(
   // Build file nodes
   const files = new Map<string, FileNode>()
   const rootFolders = new Set<string>()
+
+  // Build namespace map for C# files (needed for resolution)
+  const namespaceMap = buildNamespaceMap(fileResults, rootPath)
 
   for (const [filePath, fileInfo] of fileResults) {
     const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/')
@@ -80,8 +91,8 @@ export function buildDependencyGraph(
     file.color = getFolderColor(file.rootFolder, rootFoldersArray, file.folderDepth)
   }
 
-  // Build import relations (now with access to import sources)
-  const relations = buildImportRelationsWithSources(files, rootPath)
+  // Build import relations with multi-language support
+  const relations = buildImportRelationsWithSources(files, rootPath, namespaceMap)
 
   // Build folder clusters
   const folderClusters = buildFolderClusters(files, rootFoldersArray)
@@ -109,6 +120,29 @@ export function buildDependencyGraph(
 
   // Serialize for IPC
   return serializeGraph(graph)
+}
+
+/**
+ * Build namespace map for C# files
+ */
+function buildNamespaceMap(
+  fileResults: Map<string, FileAnalysisResult>,
+  rootPath: string
+): Map<string, string[]> {
+  const namespaceMap = new Map<string, string[]>()
+
+  for (const [filePath, fileInfo] of fileResults) {
+    const extResult = fileInfo as ExtendedFileAnalysisResult
+    if (extResult.languageMetadata?.language === 'csharp' && extResult.languageMetadata.namespace) {
+      const relativePath = path.relative(rootPath, filePath).replace(/\\/g, '/')
+      const namespace = extResult.languageMetadata.namespace
+      const existing = namespaceMap.get(namespace) || []
+      existing.push(relativePath)
+      namespaceMap.set(namespace, existing)
+    }
+  }
+
+  return namespaceMap
 }
 
 /**
@@ -216,6 +250,15 @@ function createFileNode(
     .filter((imp) => imp.isExternal)
     .map((imp) => imp.source)
 
+  // Extract language metadata
+  const extResult = fileInfo as ExtendedFileAnalysisResult
+  const languageMetadata = extResult.languageMetadata
+
+  // Store language metadata for later use
+  if (languageMetadata) {
+    fileLanguageMetadata.set(relativePath, languageMetadata)
+  }
+
   return {
     id: relativePath, // Use relative path as ID for easier matching
     filePath,
@@ -228,7 +271,8 @@ function createFileNode(
     codeItems,
     imports,
     externalImports,
-    color: '' // Will be set later
+    color: '', // Will be set later
+    languageMetadata
   }
 }
 
@@ -236,13 +280,18 @@ function createFileNode(
  * Determine file type from filename
  */
 function getFileType(fileName: string): FileNodeType {
+  // TypeScript/JavaScript index files
   if (fileName === 'index.ts' || fileName === 'index.tsx' || fileName === 'index.js' || fileName === 'index.jsx') {
     return 'index_file'
   }
-  if (fileName.includes('.test.') || fileName.includes('.spec.') || fileName.includes('__tests__')) {
+  // Test files
+  if (fileName.includes('.test.') || fileName.includes('.spec.') || fileName.includes('__tests__') ||
+      fileName.includes('Tests.cs') || fileName.includes('Test.cs')) {
     return 'test_file'
   }
-  if (fileName.endsWith('.config.ts') || fileName.endsWith('.config.js') || fileName === 'tsconfig.json') {
+  // Config files
+  if (fileName.endsWith('.config.ts') || fileName.endsWith('.config.js') || fileName === 'tsconfig.json' ||
+      fileName.endsWith('.csproj') || fileName.endsWith('.sln') || fileName === 'appsettings.json') {
     return 'config_file'
   }
   return 'source_file'
@@ -286,23 +335,40 @@ function declarationToCodeItem(decl: DeclarationItem, filePath: string): CodeIte
  */
 function buildImportRelationsWithSources(
   files: Map<string, FileNode>,
-  rootPath: string
+  rootPath: string,
+  namespaceMap: Map<string, string[]>
 ): ImportRelation[] {
   const relations: ImportRelation[] = []
   const seenRelations = new Set<string>()
+  const fileIds = new Set(files.keys())
+  const registry = getParserRegistry()
+
+  // Set up C# resolver with namespace map
+  const csharpResolver = registry.getResolver('csharp') as CSharpResolver | undefined
+  if (csharpResolver) {
+    csharpResolver.setNamespaceMap(namespaceMap)
+  }
 
   for (const file of files.values()) {
     const importSources = fileImportSources.get(file.id) || []
+    const languageMetadata = fileLanguageMetadata.get(file.id)
+    const resolver = languageMetadata?.language
+      ? registry.getResolver(languageMetadata.language)
+      : registry.getResolverForFile(file.filePath)
 
     for (let i = 0; i < importSources.length; i++) {
       const importInfo = importSources[i]
 
       // Resolve the import path to a file ID
-      const targetFileId = resolveImportPath(
-        importInfo.source,
-        file.folder,
-        files
-      )
+      let targetFileId: string | null = null
+
+      if (resolver) {
+        // Use language-specific resolver
+        targetFileId = resolver.resolveImport(importInfo.source, file.folder, fileIds)
+      } else {
+        // Fallback to TypeScript/JavaScript resolution
+        targetFileId = resolveImportPath(importInfo.source, file.folder, files)
+      }
 
       if (targetFileId && targetFileId !== file.id) {
         const relationKey = `${file.id}->${targetFileId}`
@@ -392,6 +458,7 @@ function resolveAliasPath(importSource: string): string | null {
 
 /**
  * Resolve import path (e.g., './Button', '../hooks/useAuth') to file ID
+ * Fallback resolver for TypeScript/JavaScript when no resolver is available
  */
 function resolveImportPath(
   importSource: string,
@@ -475,7 +542,6 @@ function buildFolderClusters(
 
   // Create clusters
   const clusters: Cluster[] = []
-  let colorIndex = 0
 
   for (const [folderPath, fileIds] of clusterMap) {
     const rootFolder = getRootFolder(folderPath + '/dummy')
@@ -490,8 +556,6 @@ function buildFolderClusters(
       depth,
       mode: ClusteringMode.FOLDER
     })
-
-    colorIndex++
   }
 
   return clusters.sort((a, b) => a.folderPath.localeCompare(b.folderPath))
@@ -509,7 +573,6 @@ function buildCommunityClusters(
 
   // Convert to clusters
   const clusters: Cluster[] = []
-  const communityCount = new Set(communities.values()).size
 
   const communityGroups = new Map<string, string[]>()
   for (const [fileId, communityId] of communities) {
